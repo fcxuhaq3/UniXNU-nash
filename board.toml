@@ -43,13 +43,8 @@ defconfig = "nash_defconfig"
 # boot_args->Video.  sheng's build-native-legacy-display.py / build-boot-progress.py are tied
 # to its GPU/touch/backlight probes and are a B7 (IOMobileFramebuffer) task.
 archives = [
-  "build-corecrypto-14.py",
-  "build-corecrypto-14.py --namespace",
   "build-arm-driver.py ArmDTPlatform",
   "build-arm-driver.py ArmCpu",
-  "build-arm-driver.py NativeRamBlock",
-  "build-mockfs-fixture.py",
-  "build-libpthread-kernel.py",
 ]
 
 [kernel.prelink]
