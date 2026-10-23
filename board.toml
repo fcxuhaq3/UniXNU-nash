@@ -44,7 +44,6 @@ defconfig = "nash_defconfig"
 # to its GPU/touch/backlight probes and are a B7 (IOMobileFramebuffer) task.
 archives = [
   "build-arm-driver.py ArmDTPlatform",
-  "build-arm-driver.py ArmCpu",
 ]
 
 [kernel.prelink]

@@ -1,14 +1,15 @@
-# Minimal kernel for the first nash boot: DT platform expert, CPU and arch timer only.
-# The nash ABL limits the ramdisk to 32 MiB, so every kit that is not needed to reach
-# an early panic stays out until a delivery path for a bigger payload exists.
+# First nash kernel: the DT platform expert only. ArmCpu (and therefore corecrypto)
+# is left out because the nash ABL limits the ramdisk to about 32 MiB and the
+# prelinked kernel with ArmCpu/corecrypto does not fit.
+# Goal of this build: prove that DarwinBoot loads XNU and the kernel reaches its
+# console/panic path on nash.
 
 CONFIG_XNU_BUILD_ARCHIVES=y
 CONFIG_XNU_ARM_DT_PLATFORM=y
-CONFIG_XNU_ARMCPU=y
 CONFIG_XNU_NATIVE_ARCH_TIMER=y
 CONFIG_XNU_TRUST_CACHE_RUNTIME=y
 
-# Not built for the first boot (size):
+# CONFIG_XNU_ARMCPU is not set
 # CONFIG_XNU_SOURCE_CORECRYPTO14 is not set
 # CONFIG_XNU_SOURCE_PTHREAD is not set
 # CONFIG_XNU_SOURCE_MOCKFS is not set
