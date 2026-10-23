@@ -1,0 +1,106 @@
+# Board description of the Motorola Moto Z2 Force (nash, MSM8998), read by the unixnu build driver.
+#
+# The firmware is *not* built by "unixnu build firmware": B line decision D6/D7 keeps
+# edk2-msm8998/build.sh (GCC5, its own DSC/FDF) and packages the image with this
+# repository's scripts/make-bootimg.py.  See README.md.
+
+[board]
+name = "nash"
+soc = "MSM8998"
+description = "Moto Z2 Force (nash)"
+kit = "nash"
+
+# B3 fixture: the unchanged iPad7,1 iPadOS 17.7.11 restore image, the same one sheng uses.
+# The final identity is iPhone10,2 / 16.7.16; see board.iphone10-2.toml.
+[ipsw]
+url = "https://updates.cdn-apple.com/2025SpringFCS/fullrestores/122-77166/DCA6CFE8-90E9-4B92-880D-3DE171798E40/iPad_Pro_HFR_17.7.11_21H461_Restore.ipsw"
+product = "iPad7,1"
+version = "17.7.11"
+build = "21H461"
+device_class = "j120ap"
+chip_id = 0x8011
+board_id = 12
+fetch = ["KernelCache", "DeviceTree", "StaticTrustCache", "Cryptex1,SystemTrustCache"]
+
+# Measured on the phone on 2026-10-22 with CheeseburgerInfo.efi:
+# LUN0 has 29,763,584 blocks of 4096 bytes; userdata is 29,677,755 blocks.
+# 29,677,755 * 4096 = 0x1C4D8BB000, the same as "fastboot getvar partition-size:userdata".
+[userdata]
+first_lba = 0x5041
+last_lba = 0xc067fa
+lba_bytes = 4096
+windows = [
+  { name = "OS", component = "OS" },
+  { name = "SystemOS", component = "Cryptex1,SystemOS" },
+]
+
+[kernel]
+defconfig = "nash_defconfig"
+
+# Archive builders, in order.  NativeUfs, NativeAdreno and the PMGR work belong to B5/B7.
+# The first B3 kernel needs the platform expert, timer and the block fixtures.  The kernel
+# console does not need the legacy display kit: DarwinBoot passes the GOP frame buffer in
+# boot_args->Video.  sheng's build-native-legacy-display.py / build-boot-progress.py are tied
+# to its GPU/touch/backlight probes and are a B7 (IOMobileFramebuffer) task.
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "build-arm-driver.py ArmDTPlatform",
+  "build-arm-driver.py ArmCpu",
+  "build-arm-driver.py NativeRamBlock",
+  "build-mockfs-fixture.py",
+  "build-libpthread-kernel.py",
+]
+
+[kernel.prelink]
+tool = "kits/NativePrelink/emit_prelink.py"
+kernel = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf"
+# kernelcache_sha256 = "..."        # TODO(B3): fill from the fetched iPad7,1 17.7.11 KernelCache
+slide = "-0x1000000"
+# Start from the sheng roots, then drop the ones that assume an Apple PMGR, UFS controller or
+# Adreno: B4 owns that pruning.  TODO(B3): tune against the first panic.
+roots = [
+  "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib",
+  "com.apple.driver.AppleARMPlatform",
+  "com.apple.driver.AppleARMWatchdogTimer",
+  "com.apple.driver.AppleEffaceableStorage",
+  "com.apple.driver.AppleMobileFileIntegrity",
+  "com.apple.filesystems.apfs",
+  "com.apple.iokit.IOCryptoAcceleratorFamily",
+  "com.apple.iokit.IOHIDFamily",
+  "com.apple.iokit.IOHIDEventDriver",
+  "com.apple.iokit.IOStorageFamily",
+  "com.apple.kec.Libm",
+  "com.apple.kec.corecrypto",
+  "com.apple.kext.CoreTrust",
+  "com.apple.security.AppleImage4",
+  "com.apple.security.sandbox",
+]
+
+# The ramdisk of the boot image: a FAT volume with the UniXNU config, the kernel and its
+# device tree.  The loader (DarwinBoot) stays in the firmware volume.
+[payload]
+volume = "NASHESP"
+size_mib = 64
+loader = "firmware"
+title = "Moto Z2 Force (nash) B1"
+dram_size = "0x180000000"          # 8 GiB installed; the DarwinBoot window can land above 4 GiB
+panic_screen = true                 # scripts/patch-xnu-entry-probe.py + scripts/xnu-panic-screen.c
+kernel_args = [
+  "-v",
+  "debug=0x14e",
+  "boot-progress=2",
+  "offline-legacy-gop=1",
+  "offline-legacy-unit-scale=1",
+]
+
+[payload.adt]
+tool = "scripts/make-cheeseburger-adt.py"
+# The generator builds the tree from the pinned MSM8998 constants (GICD 0x17a00000,
+# GICR 0x17b00000 stride 0x20000, timebase 19200000, UFS qcom,msm8998-ufshc), measured
+# by scripts/check-adt.py.  It does not read the IPSW DeviceTree yet; the B6 /product and
+# /buttons copy is a separate task.
+cpu_regs = "0,1,2,3,0x100,0x101,0x102,0x103"
+psci_method = "smc"
+owned_memory_size = "0x80000000"   # 2 GiB DarwinBoot window for the first boot
+ipad_identity = true
