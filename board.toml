@@ -54,21 +54,6 @@ slide = "-0x1000000"
 # Start from the sheng roots, then drop the ones that assume an Apple PMGR, UFS controller or
 # Adreno: B4 owns that pruning.  TODO(B3): tune against the first panic.
 roots = [
-  "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib",
-  "com.apple.driver.AppleARMPlatform",
-  "com.apple.driver.AppleARMWatchdogTimer",
-  "com.apple.driver.AppleEffaceableStorage",
-  "com.apple.driver.AppleMobileFileIntegrity",
-  "com.apple.filesystems.apfs",
-  "com.apple.iokit.IOCryptoAcceleratorFamily",
-  "com.apple.iokit.IOHIDFamily",
-  "com.apple.iokit.IOHIDEventDriver",
-  "com.apple.iokit.IOStorageFamily",
-  "com.apple.kec.Libm",
-  "com.apple.kec.corecrypto",
-  "com.apple.kext.CoreTrust",
-  "com.apple.security.AppleImage4",
-  "com.apple.security.sandbox",
 ]
 
 # The ramdisk of the boot image: a FAT volume with the UniXNU config, the kernel and its
