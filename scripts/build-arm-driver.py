@@ -120,6 +120,24 @@ def fix_unverified_ufs_source():
         source.write_text(text)
         print('NativeUfs: retargeted to qcom,msm8998-ufshc at 0x01da4000')
 
+    # Log every probe and start attempt: without this the bring-up is blind, because a
+    # statically linked driver that is never matched produces no output at all.
+    text = source.read_text()
+    if 'NATIVE_UFS: probe called' not in text:
+        probe_anchor = '''IOService *NativeUfs::probe (IOService *provider, SInt32 *score)
+{
+  native_ufs_probe_calls = native_ufs_probe_calls + 1;'''
+        probe_new = '''IOService *NativeUfs::probe (IOService *provider, SInt32 *score)
+{
+  IOLog ("NATIVE_UFS: probe called provider=%s class=%s\\n",
+         provider ? provider->getName () : "null",
+         provider ? provider->getMetaClass ()->getClassName () : "null");
+  native_ufs_probe_calls = native_ufs_probe_calls + 1;'''
+        if probe_anchor in text:
+            text = text.replace(probe_anchor, probe_new, 1)
+            source.write_text(text)
+            print('NativeUfs: probe logging installed')
+
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
