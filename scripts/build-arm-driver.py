@@ -112,6 +112,8 @@ def fix_unverified_ufs_source():
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
+    if args.unverified:
+        fix_unverified_ufs_source()
     if not args.unverified:
         command += ['-DNATIVE_VERIFIED_BLOCK=1', '-DNATIVE_VERIFIED_BLOCK_MULTI_POLICY=1']
 if component=='NativeOfflineGPU':
