@@ -240,6 +240,49 @@ def fix_unverified_ufs_source():
             source.write_text(text)
             print('NativeUfs: GIC control read installed')
 
+    # MSM8998 keeps the UFS clock/power block at 0x75000..0x7605c, not at sheng's
+    # 0x77000: mapping 0x177000 touches an unimplemented bank and the read stalls the
+    # bus. Offsets are from drivers/clk/qcom/gcc-msm8998.c.
+    text = source.read_text()
+    if 'MSM8998_GCC_RETARGET' not in text:
+        import re as _re
+        header = ROOT / 'drivers/NativeUfs/GccUfs.h'
+        offsets = {
+            'GCC_UFS_PHY_GDSCR': '0x75004',
+            'GCC_UFS_MEM_PHY_GDSCR': '0x75004',
+            'GCC_UFS_PHY_AXI_ENABLE': '0x75008',
+            'GCC_UFS_PHY_AHB_ENABLE': '0x7500c',
+            'GCC_UFS_PHY_TX_SYMBOL0_ENABLE': '0x75010',
+            'GCC_UFS_PHY_RX_SYMBOL0_ENABLE': '0x75014',
+            'GCC_UFS_PHY_UNIPRO_CORE_ENABLE': '0x76008',
+            'GCC_UFS_PHY_ICE_CORE_ENABLE': '0x7600c',
+            'GCC_UFS_PHY_PHY_AUX_ENABLE': '0x76040',
+            'GCC_UFS_PHY_RX_SYMBOL1_ENABLE': '0x7605c',
+            'GCC_AGGRE_UFS_PHY_AXI_ENABLE': '0x82028',
+        }
+        if header.is_file():
+            h = header.read_text()
+            before = h
+            for name, value in offsets.items():
+                h = _re.sub(r'(#define\s+' + name + r'\s+)0x[0-9a-fA-F]+', r'\g<1>' + value, h)
+            if 'MSM8998_GCC_RETARGET' not in h:
+                h = h.replace('#define NATIVE_UFS_GCC_UFS_H',
+                              '#define NATIVE_UFS_GCC_UFS_H\n// MSM8998_GCC_RETARGET: UFS clocks live at 0x75000..0x7605c', 1)
+            if h != before:
+                header.write_text(h)
+                print('NativeUfs: GCC offsets retargeted to MSM8998')
+
+        text = source.read_text()
+        before = text
+        text = text.replace('mapPhys (GCC_BASE + 0x77000, 0x1000, gccMap)',
+                            'mapPhys (GCC_BASE + 0x75000, 0x2000, gccMap)')
+        text = text.replace('mapPhys (GCC_BASE + 0x9e000, 0x1000, memPhyMap)',
+                            'mapPhys (GCC_BASE + 0x75000, 0x2000, memPhyMap)')
+        text = text.replace(' - 0x77000)', ' - 0x75000)')
+        if text != before:
+            source.write_text(text)
+            print('NativeUfs: GCC map window retargeted to 0x75000')
+
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
