@@ -231,7 +231,6 @@ def fix_unverified_ufs_source():
         print('NativeUfs: inspect() replaced with the MSM8998 register probe')
     # One compact result line, printed three times: the framebuffer console overlaps rows
     # when the boot log is long, and a single line has the best chance of staying legible.
-    text = source.read_text()
     if 'NATIVE_UFS-RESULT' not in text:
         tail_anchor = '  IOLog ("NATIVE_UFS: power done");'
         tail_new = (
