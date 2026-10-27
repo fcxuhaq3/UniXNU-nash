@@ -79,54 +79,43 @@ if component in ('NativeVirtioBlock', 'NativeRamBlock', 'NativeUfs'):
         command += ['-DNATIVE_VERIFIED_BLOCK_MULTI_POLICY=1']
 
 INSPECT_TEXT = """
-    void NativeUfs::inspect (void)
-    {
-      OSSharedPtr<IOMemoryMap> gccMap, hcMap;
-      IOLog ("NATIVE_UFS: power 1 (map GCC 0x75000)");
-      uintptr_t gcc = mapPhys (GCC_BASE + 0x75000, 0x2000, gccMap);
-      if (!gcc) {
-        IOLog ("NATIVE_UFS: GCC map failed");
-        return;
-      }
-      IOLog ("NATIVE_UFS: power 2 before gdsc=%08x axi=%08x ahb=%08x",
-             read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c));
-      // MSM8998 GCC: CBCR bit0 = branch enable, bit31 = CLK_OFF status.
-      IOLog ("NATIVE_UFS: power 3 (enable AXI 0x175008 / AHB 0x17500c)");
-      IOLog ("NATIVE_UFS: power 3a (write AXI)");
-      write32 (gcc, 0x008, read32 (gcc, 0x008) | 1U);
-      IOLog ("NATIVE_UFS: power 3b (write AHB)");
-      write32 (gcc, 0x00c, read32 (gcc, 0x00c) | 1U);
-      IOLog ("NATIVE_UFS: power 3c (poll AHB)");
-      for (unsigned index = 0; index < 200; index++) {
-        IODelay (10);
-        if ((read32 (gcc, 0x00c) & 0x80000000U) == 0) {
-          break;
+      void NativeUfs::inspect (void)
+      {
+        OSSharedPtr<IOMemoryMap> gccMap, hcMap;
+        IOLog ("NATIVE_UFS: rd 1 (map GCC 0x75000)");
+        uintptr_t gcc = mapPhys (GCC_BASE + 0x75000, 0x2000, gccMap);
+        IOLog ("NATIVE_UFS: rd 2 gcc=%p", (void *) gcc);
+        if (!gcc) {
+          IOLog ("NATIVE_UFS: rd abort (GCC map failed)");
+          return;
+        }
+        IOLog ("NATIVE_UFS: rd 3 GDSCR=%08x", read32 (gcc, 0x004));
+        IOLog ("NATIVE_UFS: rd 4 AXI=%08x", read32 (gcc, 0x008));
+        IOLog ("NATIVE_UFS: rd 5 AHB=%08x", read32 (gcc, 0x00c));
+        IOLog ("NATIVE_UFS: rd 6 (map HC 0x1da4000)");
+        uintptr_t hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, hcMap);
+        IOLog ("NATIVE_UFS: rd 7 hc=%p", (void *) hc);
+        if (!hc) {
+          IOLog ("NATIVE_UFS: rd abort (HC map failed)");
+          return;
+        }
+        IOLog ("NATIVE_UFS: rd 8 CAP=%08x", read32 (hc, 0x00));
+        IOLog ("NATIVE_UFS: rd 9 VER=%08x", read32 (hc, 0x08));
+        IOLog ("NATIVE_UFS: rd 10 PID=%08x", read32 (hc, 0x10));
+        IOLog ("NATIVE_UFS: rd 11 MID=%08x", read32 (hc, 0x14));
+        IOLog ("NATIVE_UFS: rd 12 HCS=%08x", read32 (hc, 0x30));
+        IOLog ("NATIVE_UFS: rd 13 HCE=%08x", read32 (hc, 0x34));
+        // Nothing is written: the AXI branch already reports bit0 set, and a store to an
+        // inaccessible GCC register stops the core without a next log line.
+        for (;;) {
+          IOLog ("NATIVE_UFS-RESULT cap=%08x ver=%08x pid=%08x mid=%08x",
+                 read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x10), read32 (hc, 0x14));
+          IOLog ("NATIVE_UFS-RESULT hcs=%08x hce=%08x gdsc=%08x axi=%08x ahb=%08x",
+                 read32 (hc, 0x30), read32 (hc, 0x34), read32 (gcc, 0x004),
+                 read32 (gcc, 0x008), read32 (gcc, 0x00c));
+          IODelay (500000);
         }
       }
-      IOLog ("NATIVE_UFS: power 4 after axi=%08x ahb=%08x",
-             read32 (gcc, 0x008), read32 (gcc, 0x00c));
-      // GDSCR bit0 = SW_COLLAPSE, bit31 = PWR_ON.
-      IOLog ("NATIVE_UFS: power 5 (GDSC on 0x175004)");
-      write32 (gcc, 0x004, read32 (gcc, 0x004) & ~1U);
-      for (unsigned index = 0; index < 200; index++) {
-        IODelay (10);
-        if (read32 (gcc, 0x004) & 0x80000000U) {
-          break;
-        }
-      }
-      IOLog ("NATIVE_UFS: power 6 gdsc=%08x", read32 (gcc, 0x004));
-      IOLog ("NATIVE_UFS: power 7 (map HC)");
-      uintptr_t hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, hcMap);
-      if (!hc) {
-        IOLog ("NATIVE_UFS: HC map failed");
-        return;
-      }
-      IOLog ("NATIVE_UFS: power 8 CAP=%08x", read32 (hc, 0x00));
-      IOLog ("NATIVE_UFS: power 9 VER=%08x", read32 (hc, 0x08));
-      IOLog ("NATIVE_UFS: power 10 HCS=%08x", read32 (hc, 0x30));
-      IOLog ("NATIVE_UFS: power 11 HCE=%08x", read32 (hc, 0x34));
-      IOLog ("NATIVE_UFS: power done");
-    }
 """
 
 
