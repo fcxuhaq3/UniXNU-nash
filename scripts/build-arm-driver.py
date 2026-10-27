@@ -239,7 +239,13 @@ def fix_unverified_ufs_source():
             '           read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c),\n'
             '           read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x30));\n'
             '  }\n'
-            '  IOLog ("NATIVE_UFS: power done");')
+            '  IOLog ("NATIVE_UFS: power done");\n'
+            '  for (;;) {\n'
+            '    IOLog ("NATIVE_UFS-RESULT gdsc=%08x axi=%08x ahb=%08x cap=%08x ver=%08x hcs=%08x",\n'
+            '           read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c),\n'
+            '           read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x30));\n'
+            '    IODelay (500000);\n'
+            '  }')
         if tail_anchor in text:
             text = text.replace(tail_anchor, tail_new, 1)
             source.write_text(text)
