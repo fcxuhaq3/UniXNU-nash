@@ -92,8 +92,11 @@ INSPECT_TEXT = """
              read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c));
       // MSM8998 GCC: CBCR bit0 = branch enable, bit31 = CLK_OFF status.
       IOLog ("NATIVE_UFS: power 3 (enable AXI 0x175008 / AHB 0x17500c)");
+      IOLog ("NATIVE_UFS: power 3a (write AXI)");
       write32 (gcc, 0x008, read32 (gcc, 0x008) | 1U);
+      IOLog ("NATIVE_UFS: power 3b (write AHB)");
       write32 (gcc, 0x00c, read32 (gcc, 0x00c) | 1U);
+      IOLog ("NATIVE_UFS: power 3c (poll AHB)");
       for (unsigned index = 0; index < 200; index++) {
         IODelay (10);
         if ((read32 (gcc, 0x00c) & 0x80000000U) == 0) {
