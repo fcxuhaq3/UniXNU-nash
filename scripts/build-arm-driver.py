@@ -109,6 +109,17 @@ def fix_unverified_ufs_source():
         source.write_text(text.replace(old, new, 1))
         print('NativeUfs: guarded the verification timers for the unverified build')
 
+    # nash runs the MSM8998 UFS 2.1 controller, not sheng's SM8550 part: the driver
+    # has to accept our device-tree compatible and address the right host window.
+    text = source.read_text()
+    before = text
+    text = text.replace('"qcom,sm8550-ufshc"', '"msm8998-ufshc"')
+    text = text.replace('#define UFS_HC_BASE                   0x01d84000ULL',
+                        '#define UFS_HC_BASE                   0x01da4000ULL')
+    if text != before:
+        source.write_text(text)
+        print('NativeUfs: retargeted to qcom,msm8998-ufshc at 0x01da4000')
+
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
