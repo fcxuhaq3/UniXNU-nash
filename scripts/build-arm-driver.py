@@ -78,24 +78,74 @@ if component in ('NativeVirtioBlock', 'NativeRamBlock', 'NativeUfs'):
     if args.verified_root_bundle:
         command += ['-DNATIVE_VERIFIED_BLOCK_MULTI_POLICY=1']
 
-def fix_unverified_ufs_source():
-    """Guard the verification timers so the --unverified transport compiles.
+INSPECT_TEXT = """
+    void NativeUfs::inspect (void)
+    {
+      OSSharedPtr<IOMemoryMap> gccMap, hcMap, gicMap;
+      IOLog ("NATIVE_UFS: inspect 1 (map GIC for a control read)");
+      uintptr_t gic = mapPhys (0x17a00000ULL, 0x1000, gicMap);
+      IOLog ("NATIVE_UFS: inspect 2 gic=%p", (void *) gic);
+      if (gic) {
+        IOLog ("NATIVE_UFS: inspect 3 GIC_CTLR=%08x", read32 (gic, 0x00));
+      }
+      IOLog ("NATIVE_UFS: inspect 4 (map GCC 0x75000)");
+      uintptr_t gcc = mapPhys (GCC_BASE + 0x75000, 0x2000, gccMap);
+      IOLog ("NATIVE_UFS: inspect 5 gcc=%p", (void *) gcc);
+      if (!gcc) {
+        IOLog ("NATIVE_UFS: GCC map failed");
+        return;
+      }
+      IOLog ("NATIVE_UFS: inspect 6 (read GDSCR 0x175004)");
+      uint32_t gdsc = read32 (gcc, 0x004);
+      IOLog ("NATIVE_UFS: inspect 7 gdsc=%08x", gdsc);
+      IOLog ("NATIVE_UFS: inspect 8 (read AXI 0x175008)");
+      uint32_t axi = read32 (gcc, 0x008);
+      IOLog ("NATIVE_UFS: inspect 9 axi=%08x", axi);
+      IOLog ("NATIVE_UFS: inspect 10 (read AHB 0x17500c)");
+      uint32_t ahb = read32 (gcc, 0x00c);
+      IOLog ("NATIVE_UFS: inspect 11 ahb=%08x", ahb);
+      IOLog ("NATIVE_UFS: inspect 12 (map HC 0x1da4000)");
+      uintptr_t hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, hcMap);
+      IOLog ("NATIVE_UFS: inspect 13 hc=%p", (void *) hc);
+      if (!hc) {
+        IOLog ("NATIVE_UFS: HC map failed");
+        return;
+      }
+      IOLog ("NATIVE_UFS: inspect 14 (read CAP)");
+      uint32_t cap = read32 (hc, 0x00);
+      IOLog ("NATIVE_UFS: inspect 15 CAP=%08x", cap);
+      IOLog ("NATIVE_UFS: inspect 16 (read VER)");
+      uint32_t ver = read32 (hc, 0x08);
+      IOLog ("NATIVE_UFS: inspect 17 VER=%08x", ver);
+      IOLog ("NATIVE_UFS: inspect 18 (read HCS)");
+      uint32_t hcs = read32 (hc, 0x30);
+      IOLog ("NATIVE_UFS: inspect 19 HCS=%08x", hcs);
+      IOLog ("NATIVE_UFS: inspect done");
+    }
 
-    Operations::read() times the transfer with timerTicks()/native_ufs_read_ticks,
-    but those live inside the NATIVE_VERIFIED_BLOCK block. Without the policy bundle
-    the identifiers are undeclared, so the unverified build cannot compile as shipped.
+"""
+
+
+def fix_unverified_ufs_source():
+    """Make NativeUfs build and run on nash (MSM8998).
+
+    - guard the verification timers so the --unverified transport compiles
+    - accept our device-tree compatible and the real controller address
+    - log probe/start so a silent no-match is visible
+    - replace inspect() with a panic-free register read using MSM8998 offsets
     """
     source = ROOT / 'drivers/NativeUfs/NativeUfs.cpp'
     if not source.is_file():
         return
     text = source.read_text()
-    old = """    IOReturn read (uint64_t lba, uint32_t blocks, void *out) {
+
+    old_read = """    IOReturn read (uint64_t lba, uint32_t blocks, void *out) {
       uint64_t t0 = timerTicks ();
       IOReturn r = hostRead4k (0, lba, blocks, out);
       __atomic_fetch_add (&native_ufs_read_ticks, timerTicks () - t0, __ATOMIC_RELAXED);
       return r;
     }"""
-    new = """    IOReturn read (uint64_t lba, uint32_t blocks, void *out) {
+    new_read = """    IOReturn read (uint64_t lba, uint32_t blocks, void *out) {
 #if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
       uint64_t t0 = timerTicks ();
       IOReturn r = hostRead4k (0, lba, blocks, out);
@@ -105,183 +155,60 @@ def fix_unverified_ufs_source():
       return hostRead4k (0, lba, blocks, out);
 #endif
     }"""
-    if old in text:
-        source.write_text(text.replace(old, new, 1))
-        print('NativeUfs: guarded the verification timers for the unverified build')
+    if old_read in text:
+        text = text.replace(old_read, new_read, 1)
+        print('NativeUfs: guarded the verification timers')
 
-    # nash runs the MSM8998 UFS 2.1 controller, not sheng's SM8550 part: the driver
-    # has to accept our device-tree compatible and address the right host window.
-    text = source.read_text()
     before = text
     text = text.replace('"qcom,sm8550-ufshc"', '"msm8998-ufshc"')
-    text = text.replace('#define UFS_HC_BASE                   0x01d84000ULL',
-                        '#define UFS_HC_BASE                   0x01da4000ULL')
     if text != before:
-        source.write_text(text)
-        print('NativeUfs: retargeted to qcom,msm8998-ufshc at 0x01da4000')
+        print('NativeUfs: retargeted the compatible to qcom,msm8998-ufshc')
 
-    # Log every probe and start attempt: without this the bring-up is blind, because a
-    # statically linked driver that is never matched produces no output at all.
-    text = source.read_text()
-    if 'NATIVE_UFS: probe called' not in text:
-        probe_anchor = '''IOService *NativeUfs::probe (IOService *provider, SInt32 *score)
+    header = ROOT / 'drivers/NativeUfs/GccUfs.h'
+    if header.is_file():
+        h = header.read_text()
+        if 'UFS_HC_BASE                   0x01d84000ULL' in h:
+            h = h.replace('UFS_HC_BASE                   0x01d84000ULL',
+                          'UFS_HC_BASE                   0x01da4000ULL')
+            header.write_text(h)
+            print('NativeUfs: retargeted UFS_HC_BASE to 0x01da4000')
+
+    probe_anchor = """IOService *NativeUfs::probe (IOService *provider, SInt32 *score)
 {
-  native_ufs_probe_calls = native_ufs_probe_calls + 1;'''
-        probe_new = '''IOService *NativeUfs::probe (IOService *provider, SInt32 *score)
+  native_ufs_probe_calls = native_ufs_probe_calls + 1;"""
+    probe_new = """IOService *NativeUfs::probe (IOService *provider, SInt32 *score)
 {
   IOLog ("NATIVE_UFS: probe called provider=%s class=%s\\n",
          provider ? provider->getName () : "null",
          provider ? provider->getMetaClass ()->getClassName () : "null");
-  native_ufs_probe_calls = native_ufs_probe_calls + 1;'''
-        if probe_anchor in text:
-            text = text.replace(probe_anchor, probe_new, 1)
-            source.write_text(text)
-            print('NativeUfs: probe logging installed')
+  native_ufs_probe_calls = native_ufs_probe_calls + 1;"""
+    if probe_anchor in text and 'NATIVE_UFS: probe called' not in text:
+        text = text.replace(probe_anchor, probe_new, 1)
+        print('NativeUfs: probe logging installed')
 
-    # Also log what start() parses: probe() runs but start() returns early when the
-    # native-ufs-probe boot argument never reaches the kernel, and that is invisible.
-    text = source.read_text()
-    if 'NATIVE_UFS: start probe=' not in text:
-        start_anchor = '''  unsigned probe = 0, rootMode = 0;
+    start_anchor = """  unsigned probe = 0, rootMode = 0;
   PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
   PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
-  native_ufs_probe_requested = probe != 0;'''
-        start_new = '''  unsigned probe = 0, rootMode = 0;
+  native_ufs_probe_requested = probe != 0;"""
+    start_new = """  unsigned probe = 0, rootMode = 0;
   PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
   PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
   IOLog ("NATIVE_UFS: start probe=%u rootMode=%u provider=%s\\n",
          probe, rootMode, provider ? provider->getName () : "null");
-  native_ufs_probe_requested = probe != 0;'''
-        if start_anchor in text:
-            text = text.replace(start_anchor, start_new, 1)
-            source.write_text(text)
-            print('NativeUfs: start logging installed')
+  native_ufs_probe_requested = probe != 0;"""
+    if start_anchor in text and 'NATIVE_UFS: start probe=' not in text:
+        text = text.replace(start_anchor, start_new, 1)
+        print('NativeUfs: start logging installed')
 
-    # nash has no iBoot panic-log buffer, so gPanicBase stays 0 and panic() cannot print:
-    # inspect() used to end in panic(), which hangs silently. Log the values instead and
-    # mark each step so a hang is attributable.
-    text = source.read_text()
-    if 'NATIVE_UFS: inspect step' not in text:
-        old = '''  uintptr_t gcc = mapPhys (GCC_BASE + 0x77000, 0x1000, gccMap);
-  uintptr_t memPhy = mapPhys (GCC_BASE + 0x9e000, 0x1000, memPhyMap);
-  if (!gcc || !memPhy) {
-    panic ("NATIVE_UFS inspect: GCC map failed gcc=%p memphy=%p", (void *) gcc, (void *) memPhy);
-  }'''
-        new = '''  IOLog ("NATIVE_UFS: inspect step 1 (mapping GCC)\\n");
-  uintptr_t gcc = mapPhys (GCC_BASE + 0x77000, 0x1000, gccMap);
-  IOLog ("NATIVE_UFS: inspect step 2 gcc=%p\\n", (void *) gcc);
-  uintptr_t memPhy = mapPhys (GCC_BASE + 0x9e000, 0x1000, memPhyMap);
-  IOLog ("NATIVE_UFS: inspect step 3 memphy=%p\\n", (void *) memPhy);
-  if (!gcc || !memPhy) {
-    IOLog ("NATIVE_UFS inspect: GCC map failed gcc=%p memphy=%p\\n", (void *) gcc, (void *) memPhy);
-    return;
-  }'''
-        if old in text:
-            text = text.replace(old, new, 1)
+    begin = text.find("void NativeUfs::inspect (void)")
+    end = text.find("// Adopt the controller the firmware left running", begin)
+    if begin >= 0 and end > begin:
+        text = text[:begin] + INSPECT_TEXT + text[end:]
+        print('NativeUfs: inspect() replaced with the MSM8998 register probe')
 
-        # the final panic(): log instead, so the numbers actually reach the console
-        old_tail = '''  panic ("NATIVE_UFS inspect\\n"'''
-        new_tail = '''  IOLog ("NATIVE_UFS inspect\\n"'''
-        text = text.replace(old_tail, new_tail, 1)
-        source.write_text(text)
-        print('NativeUfs: inspect logging installed, panic replaced')
+    source.write_text(text)
 
-    # The first GCC read stalls the bus, which means that block is not clocked. Read the
-    # UFS host controller first (firmware normally leaves it up) and log before every
-    # access so a stall is attributable to a single register.
-    text = source.read_text()
-    if 'inspect step 4' not in text:
-        anchor_read = "  // GDSCR bit31 PWR_ON;"
-        replacement = (
-            '  IOLog ("NATIVE_UFS: inspect step 4 (mapping HC)");\n'
-            '  {\n'
-            '    OSSharedPtr<IOMemoryMap> hcProbeMap;\n'
-            '    uintptr_t hcProbe = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, hcProbeMap);\n'
-            '    IOLog ("NATIVE_UFS: inspect step 5 hc=%p", (void *) hcProbe);\n'
-            '    if (hcProbe) {\n'
-            '      IOLog ("NATIVE_UFS: inspect step 6 (reading CAP)");\n'
-            '      IOLog ("NATIVE_UFS: CAP=%08x", read32 (hcProbe, 0x00));\n'
-            '      IOLog ("NATIVE_UFS: inspect step 7 (reading VER)");\n'
-            '      IOLog ("NATIVE_UFS: VER=%08x", read32 (hcProbe, 0x08));\n'
-            '      IOLog ("NATIVE_UFS: inspect step 8 (reading HCS)");\n'
-            '      IOLog ("NATIVE_UFS: HCS=%08x", read32 (hcProbe, 0x30));\n'
-            '      IOLog ("NATIVE_UFS: inspect step 9 (reading HCE)");\n'
-            '      IOLog ("NATIVE_UFS: HCE=%08x", read32 (hcProbe, 0x34));\n'
-            '    }\n'
-            '  }\n'
-            '  IOLog ("NATIVE_UFS: inspect step 10 (reading GCC gdsc)");\n'
-            '  uint32_t gdsc = read32 (gcc, GCC_UFS_PHY_GDSCR - 0x77000);\n'
-            '  IOLog ("NATIVE_UFS: inspect step 11 gdsc=%08x", gdsc);')
-        if anchor_read in text:
-            text = text.replace(anchor_read, replacement, 1)
-            source.write_text(text)
-            print('NativeUfs: controller-first inspect installed')
 
-    # Control read: the GIC distributor is a device window this kernel demonstrably uses,
-    # so if it also stalls then mapPhys() is not producing real device mappings, and the
-    # UFS/GCC stalls say nothing about power.
-    text = source.read_text()
-    if 'GIC control read' not in text:
-        anchor_gic = '  IOLog ("NATIVE_UFS: inspect step 4 (mapping HC)");'
-        gic_block = (
-            '  IOLog ("NATIVE_UFS: GIC control read (mapping 0x17a00000)");\n'
-            '  {\n'
-            '    OSSharedPtr<IOMemoryMap> gicMap;\n'
-            '    uintptr_t gic = mapPhys (0x17a00000ULL, 0x1000, gicMap);\n'
-            '    IOLog ("NATIVE_UFS: GIC map=%p", (void *) gic);\n'
-            '    if (gic) {\n'
-            '      IOLog ("NATIVE_UFS: GIC CTLR=%08x", read32 (gic, 0x00));\n'
-            '      IOLog ("NATIVE_UFS: GIC control read done");\n'
-            '    }\n'
-            '  }\n'
-            '  IOLog ("NATIVE_UFS: inspect step 4 (mapping HC)");')
-        if anchor_gic in text:
-            text = text.replace(anchor_gic, gic_block, 1)
-            source.write_text(text)
-            print('NativeUfs: GIC control read installed')
-
-    # MSM8998 keeps the UFS clock/power block at 0x75000..0x7605c, not at sheng's
-    # 0x77000: mapping 0x177000 touches an unimplemented bank and the read stalls the
-    # bus. Offsets are from drivers/clk/qcom/gcc-msm8998.c.
-    text = source.read_text()
-    if 'MSM8998_GCC_RETARGET' not in text:
-        import re as _re
-        header = ROOT / 'drivers/NativeUfs/GccUfs.h'
-        offsets = {
-            'GCC_UFS_PHY_GDSCR': '0x75004',
-            'GCC_UFS_MEM_PHY_GDSCR': '0x75004',
-            'GCC_UFS_PHY_AXI_ENABLE': '0x75008',
-            'GCC_UFS_PHY_AHB_ENABLE': '0x7500c',
-            'GCC_UFS_PHY_TX_SYMBOL0_ENABLE': '0x75010',
-            'GCC_UFS_PHY_RX_SYMBOL0_ENABLE': '0x75014',
-            'GCC_UFS_PHY_UNIPRO_CORE_ENABLE': '0x76008',
-            'GCC_UFS_PHY_ICE_CORE_ENABLE': '0x7600c',
-            'GCC_UFS_PHY_PHY_AUX_ENABLE': '0x76040',
-            'GCC_UFS_PHY_RX_SYMBOL1_ENABLE': '0x7605c',
-            'GCC_AGGRE_UFS_PHY_AXI_ENABLE': '0x82028',
-        }
-        if header.is_file():
-            h = header.read_text()
-            before = h
-            for name, value in offsets.items():
-                h = _re.sub(r'(#define\s+' + name + r'\s+)0x[0-9a-fA-F]+', r'\g<1>' + value, h)
-            if 'MSM8998_GCC_RETARGET' not in h:
-                h = h.replace('#define NATIVE_UFS_GCC_UFS_H',
-                              '#define NATIVE_UFS_GCC_UFS_H\n// MSM8998_GCC_RETARGET: UFS clocks live at 0x75000..0x7605c', 1)
-            if h != before:
-                header.write_text(h)
-                print('NativeUfs: GCC offsets retargeted to MSM8998')
-
-        text = source.read_text()
-        before = text
-        text = text.replace('mapPhys (GCC_BASE + 0x77000, 0x1000, gccMap)',
-                            'mapPhys (GCC_BASE + 0x75000, 0x2000, gccMap)')
-        text = text.replace('mapPhys (GCC_BASE + 0x9e000, 0x1000, memPhyMap)',
-                            'mapPhys (GCC_BASE + 0x75000, 0x2000, memPhyMap)')
-        text = text.replace(' - 0x77000)', ' - 0x75000)')
-        if text != before:
-            source.write_text(text)
-            print('NativeUfs: GCC map window retargeted to 0x75000')
 
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
