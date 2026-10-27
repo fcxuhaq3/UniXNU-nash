@@ -62,7 +62,6 @@ slide = "-0x1000000"
 # Adreno: B4 owns that pruning.  TODO(B3): tune against the first panic.
 roots = [
   "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib",
-  "com.apple.driver.AppleARMPlatform",
   "com.apple.driver.AppleARMWatchdogTimer",
   "com.apple.driver.AppleEffaceableStorage",
   "com.apple.driver.AppleMobileFileIntegrity",
