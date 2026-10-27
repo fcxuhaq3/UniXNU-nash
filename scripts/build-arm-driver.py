@@ -175,6 +175,26 @@ def fix_unverified_ufs_source():
             source.write_text(text)
             print('NativeUfs: timer fallbacks installed for the unverified build')
 
+    # A standalone IODeviceMemory has no provider, so map() may hand back ordinary
+    # memory: the GCC reads disagreed run to run and a store stalled the core. ml_io_map
+    # is the kernel's own device mapping and is always uncached device memory.
+    text = source.read_text()
+    if 'ML_IO_MAP_DEVICE' not in text:
+        old_map = """  IODeviceMemory *memory = IODeviceMemory::withRange (phys, length);
+  if (!memory) {
+    return 0;
+  }
+  keep = OSSharedPtr<IOMemoryMap> (memory->map (kIOMapAnywhere | kIOMapInhibitCache), OSNoRetain);
+  memory->release ();
+  return keep ? static_cast<uintptr_t> (keep->getVirtualAddress ()) : 0;"""
+        new_map = """  // ML_IO_MAP_DEVICE: the kernel's device mapping, not a provider-less descriptor map.
+  (void) keep;
+  return static_cast<uintptr_t> (ml_io_map (phys, length));"""
+        if old_map in text:
+            text = text.replace(old_map, new_map, 1)
+            source.write_text(text)
+            print('NativeUfs: mapPhys now uses ml_io_map')
+
     before = text
     text = text.replace('"qcom,sm8550-ufshc"', '"msm8998-ufshc"')
     if text != before:
