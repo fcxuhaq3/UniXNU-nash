@@ -157,6 +157,35 @@ def fix_unverified_ufs_source():
             source.write_text(text)
             print('NativeUfs: start logging installed')
 
+    # nash has no iBoot panic-log buffer, so gPanicBase stays 0 and panic() cannot print:
+    # inspect() used to end in panic(), which hangs silently. Log the values instead and
+    # mark each step so a hang is attributable.
+    text = source.read_text()
+    if 'NATIVE_UFS: inspect step' not in text:
+        old = '''  uintptr_t gcc = mapPhys (GCC_BASE + 0x77000, 0x1000, gccMap);
+  uintptr_t memPhy = mapPhys (GCC_BASE + 0x9e000, 0x1000, memPhyMap);
+  if (!gcc || !memPhy) {
+    panic ("NATIVE_UFS inspect: GCC map failed gcc=%p memphy=%p", (void *) gcc, (void *) memPhy);
+  }'''
+        new = '''  IOLog ("NATIVE_UFS: inspect step 1 (mapping GCC)\n");
+  uintptr_t gcc = mapPhys (GCC_BASE + 0x77000, 0x1000, gccMap);
+  IOLog ("NATIVE_UFS: inspect step 2 gcc=%p\n", (void *) gcc);
+  uintptr_t memPhy = mapPhys (GCC_BASE + 0x9e000, 0x1000, memPhyMap);
+  IOLog ("NATIVE_UFS: inspect step 3 memphy=%p\n", (void *) memPhy);
+  if (!gcc || !memPhy) {
+    IOLog ("NATIVE_UFS inspect: GCC map failed gcc=%p memphy=%p\n", (void *) gcc, (void *) memPhy);
+    return;
+  }'''
+        if old in text:
+            text = text.replace(old, new, 1)
+
+        # the final panic(): log instead, so the numbers actually reach the console
+        old_tail = '''  panic ("NATIVE_UFS inspect\n"'''
+        new_tail = '''  IOLog ("NATIVE_UFS inspect\n"'''
+        text = text.replace(old_tail, new_tail, 1)
+        source.write_text(text)
+        print('NativeUfs: inspect logging installed, panic replaced')
+
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
