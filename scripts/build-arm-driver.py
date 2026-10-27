@@ -186,6 +186,37 @@ def fix_unverified_ufs_source():
         source.write_text(text)
         print('NativeUfs: inspect logging installed, panic replaced')
 
+    # The first GCC read stalls the bus, which means that block is not clocked. Read the
+    # UFS host controller first (firmware normally leaves it up) and log before every
+    # access so a stall is attributable to a single register.
+    text = source.read_text()
+    if 'inspect step 4' not in text:
+        anchor_read = "  uint32_t gdsc = read32 (gcc, GCC_UFS_PHY_GDSCR - 0x77000);"
+        replacement = (
+            '  IOLog ("NATIVE_UFS: inspect step 4 (mapping HC)");\n'
+            '  {\n'
+            '    OSSharedPtr<IOMemoryMap> hcProbeMap;\n'
+            '    uintptr_t hcProbe = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, hcProbeMap);\n'
+            '    IOLog ("NATIVE_UFS: inspect step 5 hc=%p", (void *) hcProbe);\n'
+            '    if (hcProbe) {\n'
+            '      IOLog ("NATIVE_UFS: inspect step 6 (reading CAP)");\n'
+            '      IOLog ("NATIVE_UFS: CAP=%08x", read32 (hcProbe, 0x00));\n'
+            '      IOLog ("NATIVE_UFS: inspect step 7 (reading VER)");\n'
+            '      IOLog ("NATIVE_UFS: VER=%08x", read32 (hcProbe, 0x08));\n'
+            '      IOLog ("NATIVE_UFS: inspect step 8 (reading HCS)");\n'
+            '      IOLog ("NATIVE_UFS: HCS=%08x", read32 (hcProbe, 0x30));\n'
+            '      IOLog ("NATIVE_UFS: inspect step 9 (reading HCE)");\n'
+            '      IOLog ("NATIVE_UFS: HCE=%08x", read32 (hcProbe, 0x34));\n'
+            '    }\n'
+            '  }\n'
+            '  IOLog ("NATIVE_UFS: inspect step 10 (reading GCC gdsc)");\n'
+            '  uint32_t gdsc = read32 (gcc, GCC_UFS_PHY_GDSCR - 0x77000);\n'
+            '  IOLog ("NATIVE_UFS: inspect step 11 gdsc=%08x", gdsc);')
+        if anchor_read in text:
+            text = text.replace(anchor_read, replacement, 1)
+            source.write_text(text)
+            print('NativeUfs: controller-first inspect installed')
+
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
