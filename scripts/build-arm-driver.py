@@ -157,9 +157,7 @@ def fix_unverified_ufs_source():
     # rewriting every call site.
     text = source.read_text()
     if 'NATIVE_UFS_TIMER_FALLBACK' not in text:
-        include_anchor = '#include <pexpert/pexpert.h>
-// ML_IO_MAP_DECL: kernel-internal device mapping used by pexpert.
-extern "C" vm_offset_t ml_io_map (vm_offset_t phys, vm_size_t length);'
+        include_anchor = '#include <pexpert/pexpert.h>'
         fallback = (
             '#include <pexpert/pexpert.h>\n'
             '\n'
@@ -190,7 +188,8 @@ extern "C" vm_offset_t ml_io_map (vm_offset_t phys, vm_size_t length);'
   memory->release ();
   return keep ? static_cast<uintptr_t> (keep->getVirtualAddress ()) : 0;"""
         new_map = """  // ML_IO_MAP_DEVICE: the kernel's device mapping, not a provider-less descriptor map.
-  // ML_IO_MAP_DECL: ml_io_map has no public header, so declare the kernel symbol here.
+  // ML_IO_MAP_DECL: ml_io_map has no public header, so declare the kernel symbol locally.
+  extern "C" vm_offset_t ml_io_map (vm_offset_t, vm_size_t);
   (void) keep;
   return static_cast<uintptr_t> (ml_io_map (static_cast<vm_offset_t> (phys),
                                             static_cast<vm_size_t> (length)));"""
