@@ -201,6 +201,10 @@ def main():
                         ('#size-cells', struct.pack('<I', 2)),
                         ('ranges', struct.pack('<QQQ', 0, ARMIO_BASE, 0x08000000))],
              [node('intc', [('compatible', b'arm,gic-v3\0'),
+                            # XNU's pe_arm_map_interrupt_controller() looks the early GIC up
+                            # with SecureDTFindEntry("interrupt-controller", "master"), so the
+                            # node has to carry this Apple-style property, not just compatible.
+                            ('interrupt-controller', b'master\0'),
                             ('reg', struct.pack('<4Q',
                                                 GIC_DIST - ARMIO_BASE, GIC_DIST_SIZE,
                                                 GIC_REDIST - ARMIO_BASE, GIC_REDIST_SIZE)),
