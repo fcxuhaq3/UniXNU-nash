@@ -160,6 +160,29 @@ def fix_unverified_ufs_source():
         text = text.replace(old_read, new_read, 1)
         print('NativeUfs: guarded the verification timers')
 
+    # The verification timers live inside the NATIVE_VERIFIED_BLOCK block, so the
+    # --unverified transport has no timerTicks. Provide harmless fallbacks instead of
+    # rewriting every call site.
+    text = source.read_text()
+    if 'NATIVE_UFS_TIMER_FALLBACK' not in text:
+        include_anchor = '#include <pexpert/pexpert.h>'
+        fallback = (
+            '#include <pexpert/pexpert.h>\n'
+            '\n'
+            '// NATIVE_UFS_TIMER_FALLBACK: the verification timers are only defined for the\n'
+            '// verified build; the bring-up transport only reports them, so zeros are fine.\n'
+            '#if !defined(NATIVE_VERIFIED_BLOCK) || !NATIVE_VERIFIED_BLOCK\n'
+            'volatile uint64_t native_ufs_read_ticks = 0;\n'
+            'volatile uint64_t native_ufs_verify_ticks = 0;\n'
+            'volatile uint64_t native_ufs_verified_blocks = 0;\n'
+            'volatile uint32_t native_ufs_integrity_failures = 0;\n'
+            'static inline uint64_t timerTicks (void) { return 0; }\n'
+            '#endif')
+        if include_anchor in text:
+            text = text.replace(include_anchor, fallback, 1)
+            source.write_text(text)
+            print('NativeUfs: timer fallbacks installed for the unverified build')
+
     before = text
     text = text.replace('"qcom,sm8550-ufshc"', '"msm8998-ufshc"')
     if text != before:
