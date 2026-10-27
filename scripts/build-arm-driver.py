@@ -81,48 +81,49 @@ if component in ('NativeVirtioBlock', 'NativeRamBlock', 'NativeUfs'):
 INSPECT_TEXT = """
     void NativeUfs::inspect (void)
     {
-      OSSharedPtr<IOMemoryMap> gccMap, hcMap, gicMap;
-      IOLog ("NATIVE_UFS: inspect 1 (map GIC for a control read)");
-      uintptr_t gic = mapPhys (0x17a00000ULL, 0x1000, gicMap);
-      IOLog ("NATIVE_UFS: inspect 2 gic=%p", (void *) gic);
-      if (gic) {
-        IOLog ("NATIVE_UFS: inspect 3 GIC_CTLR=%08x", read32 (gic, 0x00));
-      }
-      IOLog ("NATIVE_UFS: inspect 4 (map GCC 0x75000)");
+      OSSharedPtr<IOMemoryMap> gccMap, hcMap;
+      IOLog ("NATIVE_UFS: power 1 (map GCC 0x75000)");
       uintptr_t gcc = mapPhys (GCC_BASE + 0x75000, 0x2000, gccMap);
-      IOLog ("NATIVE_UFS: inspect 5 gcc=%p", (void *) gcc);
       if (!gcc) {
         IOLog ("NATIVE_UFS: GCC map failed");
         return;
       }
-      IOLog ("NATIVE_UFS: inspect 6 (read GDSCR 0x175004)");
-      uint32_t gdsc = read32 (gcc, 0x004);
-      IOLog ("NATIVE_UFS: inspect 7 gdsc=%08x", gdsc);
-      IOLog ("NATIVE_UFS: inspect 8 (read AXI 0x175008)");
-      uint32_t axi = read32 (gcc, 0x008);
-      IOLog ("NATIVE_UFS: inspect 9 axi=%08x", axi);
-      IOLog ("NATIVE_UFS: inspect 10 (read AHB 0x17500c)");
-      uint32_t ahb = read32 (gcc, 0x00c);
-      IOLog ("NATIVE_UFS: inspect 11 ahb=%08x", ahb);
-      IOLog ("NATIVE_UFS: inspect 12 (map HC 0x1da4000)");
+      IOLog ("NATIVE_UFS: power 2 before gdsc=%08x axi=%08x ahb=%08x",
+             read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c));
+      // MSM8998 GCC: CBCR bit0 = branch enable, bit31 = CLK_OFF status.
+      IOLog ("NATIVE_UFS: power 3 (enable AXI 0x175008 / AHB 0x17500c)");
+      write32 (gcc, 0x008, read32 (gcc, 0x008) | 1U);
+      write32 (gcc, 0x00c, read32 (gcc, 0x00c) | 1U);
+      for (unsigned index = 0; index < 200; index++) {
+        IODelay (10);
+        if ((read32 (gcc, 0x00c) & 0x80000000U) == 0) {
+          break;
+        }
+      }
+      IOLog ("NATIVE_UFS: power 4 after axi=%08x ahb=%08x",
+             read32 (gcc, 0x008), read32 (gcc, 0x00c));
+      // GDSCR bit0 = SW_COLLAPSE, bit31 = PWR_ON.
+      IOLog ("NATIVE_UFS: power 5 (GDSC on 0x175004)");
+      write32 (gcc, 0x004, read32 (gcc, 0x004) & ~1U);
+      for (unsigned index = 0; index < 200; index++) {
+        IODelay (10);
+        if (read32 (gcc, 0x004) & 0x80000000U) {
+          break;
+        }
+      }
+      IOLog ("NATIVE_UFS: power 6 gdsc=%08x", read32 (gcc, 0x004));
+      IOLog ("NATIVE_UFS: power 7 (map HC)");
       uintptr_t hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, hcMap);
-      IOLog ("NATIVE_UFS: inspect 13 hc=%p", (void *) hc);
       if (!hc) {
         IOLog ("NATIVE_UFS: HC map failed");
         return;
       }
-      IOLog ("NATIVE_UFS: inspect 14 (read CAP)");
-      uint32_t cap = read32 (hc, 0x00);
-      IOLog ("NATIVE_UFS: inspect 15 CAP=%08x", cap);
-      IOLog ("NATIVE_UFS: inspect 16 (read VER)");
-      uint32_t ver = read32 (hc, 0x08);
-      IOLog ("NATIVE_UFS: inspect 17 VER=%08x", ver);
-      IOLog ("NATIVE_UFS: inspect 18 (read HCS)");
-      uint32_t hcs = read32 (hc, 0x30);
-      IOLog ("NATIVE_UFS: inspect 19 HCS=%08x", hcs);
-      IOLog ("NATIVE_UFS: inspect done");
+      IOLog ("NATIVE_UFS: power 8 CAP=%08x", read32 (hc, 0x00));
+      IOLog ("NATIVE_UFS: power 9 VER=%08x", read32 (hc, 0x08));
+      IOLog ("NATIVE_UFS: power 10 HCS=%08x", read32 (hc, 0x30));
+      IOLog ("NATIVE_UFS: power 11 HCE=%08x", read32 (hc, 0x34));
+      IOLog ("NATIVE_UFS: power done");
     }
-
 """
 
 
