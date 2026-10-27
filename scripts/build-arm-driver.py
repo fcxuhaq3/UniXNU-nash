@@ -138,6 +138,25 @@ def fix_unverified_ufs_source():
             source.write_text(text)
             print('NativeUfs: probe logging installed')
 
+    # Also log what start() parses: probe() runs but start() returns early when the
+    # native-ufs-probe boot argument never reaches the kernel, and that is invisible.
+    text = source.read_text()
+    if 'NATIVE_UFS: start probe=' not in text:
+        start_anchor = '''  unsigned probe = 0, rootMode = 0;
+  PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
+  PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
+  native_ufs_probe_requested = probe != 0;'''
+        start_new = '''  unsigned probe = 0, rootMode = 0;
+  PE_parse_boot_argn ("native-ufs-probe", &probe, sizeof (probe));
+  PE_parse_boot_argn ("native-ufs-root", &rootMode, sizeof (rootMode));
+  IOLog ("NATIVE_UFS: start probe=%u rootMode=%u provider=%s\\n",
+         probe, rootMode, provider ? provider->getName () : "null");
+  native_ufs_probe_requested = probe != 0;'''
+        if start_anchor in text:
+            text = text.replace(start_anchor, start_new, 1)
+            source.write_text(text)
+            print('NativeUfs: start logging installed')
+
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
