@@ -1,34 +1,26 @@
-# B3 kernel for nash: DT platform expert, ArmCpu, architectural timer and the
-# block fixtures. corecrypto is required by ArmCpu. mockfs needs pthread.
-#
-# Delivery: the prelinked kernel is about 51 MiB, which exceeds the ~32 MiB
-# ramdisk limit of the nash ABL, so the payload FAT volume lives on the
-# unused oem_a partition (1.3 GiB) and the boot image ships without a ramdisk.
-# UniXNU scans every SimpleFileSystem volume for \EFI\UniXNU\unixnu.toml.
-
+# Bootstrap pass: build the base 4 KiB XNU and a prelinked candidate with no
+# device archives. This produces the compile records and the original-class
+# candidate that build-ufs-original-bindings.py reads.
 # CONFIG_XNU_BUILD_ARCHIVES is not set
-CONFIG_XNU_SOURCE_CORECRYPTO14=y
-CONFIG_XNU_SOURCE_PTHREAD=y
-CONFIG_XNU_ARM_DT_PLATFORM=y
-CONFIG_XNU_ARMCPU=y
-CONFIG_XNU_NATIVE_ARCH_TIMER=y
-CONFIG_XNU_NATIVE_CS_HASH_CACHE=y
-CONFIG_XNU_TRUST_CACHE_RUNTIME=y
-CONFIG_XNU_SOURCE_MOCKFS=y
-
 CONFIG_XNU_CRYPTO_BOOTSTRAP="prelinked"
-
-# Later milestones:
-# CONFIG_XNU_NATIVE_LEGACY_DISPLAY is not set
-# CONFIG_XNU_BOOT_PROGRESS is not set
-CONFIG_XNU_NATIVE_UFS=y
-# CONFIG_XNU_NATIVE_ADRENO is not set
-# CONFIG_XNU_SHENG_PMGR is not set
+# CONFIG_XNU_SOURCE_CORECRYPTO14 is not set
+# CONFIG_XNU_SOURCE_PTHREAD is not set
+# CONFIG_XNU_ARM_DT_PLATFORM is not set
+# CONFIG_XNU_ARMCPU is not set
+# CONFIG_XNU_NATIVE_ARCH_TIMER is not set
+# CONFIG_XNU_NATIVE_CS_HASH_CACHE is not set
+# CONFIG_XNU_TRUST_CACHE_RUNTIME is not set
+# CONFIG_XNU_NATIVE_UFS is not set
+# CONFIG_XNU_NATIVE_AES is not set
+# CONFIG_XNU_NATIVE_VIRTIO_BLOCK is not set
+# CONFIG_XNU_NATIVE_RAM_BLOCK is not set
 # CONFIG_XNU_NATIVE_PAN is not set
 # CONFIG_XNU_NATIVE_MOBILE_DISPLAY is not set
-# CONFIG_XNU_NATIVE_VIRTIO_BLOCK is not set
+# CONFIG_XNU_NATIVE_LEGACY_DISPLAY is not set
+# CONFIG_XNU_NATIVE_ADRENO is not set
+# CONFIG_XNU_SHENG_PMGR is not set
+# CONFIG_XNU_BOOT_PROGRESS is not set
 # CONFIG_XNU_VERIFIED_ROOT_PROBE is not set
 # CONFIG_XNU_OWNER_ROOT_AUDIT is not set
 # CONFIG_XNU_OWNER_ROOT_TRUST is not set
-CONFIG_XNU_NATIVE_AES=y
-# CONFIG_XNU_NATIVE_RAM_BLOCK is not set
+# CONFIG_XNU_SOURCE_MOCKFS is not set
