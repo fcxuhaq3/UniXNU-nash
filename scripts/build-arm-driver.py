@@ -206,6 +206,22 @@ def fix_unverified_ufs_source():
     if begin >= 0 and end > begin:
         text = text[:begin] + INSPECT_TEXT + text[end:]
         print('NativeUfs: inspect() replaced with the MSM8998 register probe')
+    # One compact result line, printed three times: the framebuffer console overlaps rows
+    # when the boot log is long, and a single line has the best chance of staying legible.
+    text = source.read_text()
+    if 'NATIVE_UFS-RESULT' not in text:
+        tail_anchor = '  IOLog ("NATIVE_UFS: power done");'
+        tail_new = (
+            '  for (unsigned repeat = 0; repeat < 3; repeat++) {\n'
+            '    IOLog ("NATIVE_UFS-RESULT gdsc=%08x axi=%08x ahb=%08x cap=%08x ver=%08x hcs=%08x",\n'
+            '           read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c),\n'
+            '           read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x30));\n'
+            '  }\n'
+            '  IOLog ("NATIVE_UFS: power done");')
+        if tail_anchor in text:
+            text = text.replace(tail_anchor, tail_new, 1)
+            source.write_text(text)
+            print('NativeUfs: compact result line installed')
 
     source.write_text(text)
 
