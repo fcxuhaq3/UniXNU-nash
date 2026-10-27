@@ -217,6 +217,29 @@ def fix_unverified_ufs_source():
             source.write_text(text)
             print('NativeUfs: controller-first inspect installed')
 
+    # Control read: the GIC distributor is a device window this kernel demonstrably uses,
+    # so if it also stalls then mapPhys() is not producing real device mappings, and the
+    # UFS/GCC stalls say nothing about power.
+    text = source.read_text()
+    if 'GIC control read' not in text:
+        anchor_gic = '  IOLog ("NATIVE_UFS: inspect step 4 (mapping HC)");'
+        gic_block = (
+            '  IOLog ("NATIVE_UFS: GIC control read (mapping 0x17a00000)");\n'
+            '  {\n'
+            '    OSSharedPtr<IOMemoryMap> gicMap;\n'
+            '    uintptr_t gic = mapPhys (0x17a00000ULL, 0x1000, gicMap);\n'
+            '    IOLog ("NATIVE_UFS: GIC map=%p", (void *) gic);\n'
+            '    if (gic) {\n'
+            '      IOLog ("NATIVE_UFS: GIC CTLR=%08x", read32 (gic, 0x00));\n'
+            '      IOLog ("NATIVE_UFS: GIC control read done");\n'
+            '    }\n'
+            '  }\n'
+            '  IOLog ("NATIVE_UFS: inspect step 4 (mapping HC)");')
+        if anchor_gic in text:
+            text = text.replace(anchor_gic, gic_block, 1)
+            source.write_text(text)
+            print('NativeUfs: GIC control read installed')
+
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
