@@ -191,7 +191,7 @@ def fix_unverified_ufs_source():
     # access so a stall is attributable to a single register.
     text = source.read_text()
     if 'inspect step 4' not in text:
-        anchor_read = "  uint32_t gdsc = read32 (gcc, GCC_UFS_PHY_GDSCR - 0x77000);"
+        anchor_read = "  // GDSCR bit31 PWR_ON;"
         replacement = (
             '  IOLog ("NATIVE_UFS: inspect step 4 (mapping HC)");\n'
             '  {\n'
