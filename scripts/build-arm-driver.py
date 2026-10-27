@@ -77,6 +77,38 @@ if component in ('NativeVirtioBlock', 'NativeRamBlock', 'NativeUfs'):
         command += ['-DNATIVE_VERIFIED_BLOCK_INJECT_FAULT=1']
     if args.verified_root_bundle:
         command += ['-DNATIVE_VERIFIED_BLOCK_MULTI_POLICY=1']
+
+def fix_unverified_ufs_source():
+    """Guard the verification timers so the --unverified transport compiles.
+
+    Operations::read() times the transfer with timerTicks()/native_ufs_read_ticks,
+    but those live inside the NATIVE_VERIFIED_BLOCK block. Without the policy bundle
+    the identifiers are undeclared, so the unverified build cannot compile as shipped.
+    """
+    source = ROOT / 'drivers/NativeUfs/NativeUfs.cpp'
+    if not source.is_file():
+        return
+    text = source.read_text()
+    old = """    IOReturn read (uint64_t lba, uint32_t blocks, void *out) {
+      uint64_t t0 = timerTicks ();
+      IOReturn r = hostRead4k (0, lba, blocks, out);
+      __atomic_fetch_add (&native_ufs_read_ticks, timerTicks () - t0, __ATOMIC_RELAXED);
+      return r;
+    }"""
+    new = """    IOReturn read (uint64_t lba, uint32_t blocks, void *out) {
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+      uint64_t t0 = timerTicks ();
+      IOReturn r = hostRead4k (0, lba, blocks, out);
+      __atomic_fetch_add (&native_ufs_read_ticks, timerTicks () - t0, __ATOMIC_RELAXED);
+      return r;
+#else
+      return hostRead4k (0, lba, blocks, out);
+#endif
+    }"""
+    if old in text:
+        source.write_text(text.replace(old, new, 1))
+        print('NativeUfs: guarded the verification timers for the unverified build')
+
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
