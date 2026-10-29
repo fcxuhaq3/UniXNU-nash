@@ -362,6 +362,18 @@ def fix_unverified_ufs_source():
         text = ''.join(out_lines)
         print('NativeUfs: smmuBypassStream replaced with a stub')
 
+    # SMMU_HEADER_INLINE: stubbing the bypass leaves the header helper unused, and -Werror
+    # rejects a plain static function in a header, so make it static inline.
+    header_path = ROOT / 'drivers/NativeUfs/SmmuTakeover.h'
+    if header_path.is_file():
+        htext = header_path.read_text()
+        if 'static inline' not in htext.split('ufsSmmuAddressBits')[0][-60:]:
+            import re as _re3
+            htext, _n = _re3.subn(r'^static (.*ufsSmmuAddressBits)', r'static inline \1', htext, flags=_re3.M)
+            header_path.write_text(htext)
+            if _n:
+                print('NativeUfs: %d SMMU header helper(s) marked static inline' % _n)
+
     # GUARD: a re-read once silently discarded every patch above, so verify the final
     # source actually carries each marker before writing it.
     expected = (
