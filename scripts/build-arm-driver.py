@@ -188,11 +188,18 @@ def fix_unverified_ufs_source():
   memory->release ();
   return keep ? static_cast<uintptr_t> (keep->getVirtualAddress ()) : 0;"""
         new_map = """  // ML_IO_MAP_DEVICE: the kernel's device mapping, not a provider-less descriptor map.
-  // ML_IO_MAP_DECL: ml_io_map has no public header, so declare the kernel symbol locally.
-  extern "C" vm_offset_t ml_io_map (vm_offset_t, vm_size_t);
+  // ml_io_map is declared at file scope (see the ML_IO_MAP_DECL block).
   (void) keep;
   return static_cast<uintptr_t> (ml_io_map (static_cast<vm_offset_t> (phys),
                                             static_cast<vm_size_t> (length)));"""
+        decl_anchor = "static uintptr_t mapPhys (uint64_t phys"
+        if decl_anchor in text and 'ML_IO_MAP_DECL' not in text:
+            text = text.replace(
+                decl_anchor,
+                '// ML_IO_MAP_DECL: ml_io_map has no public header; declare the kernel symbol here.\n'
+                'extern "C" vm_offset_t ml_io_map (vm_offset_t, vm_size_t);\n'
+                '\n' + decl_anchor, 1)
+            print('file-scope ml_io_map declaration inserted')
         if old_map in text:
             text = text.replace(old_map, new_map, 1)
             source.write_text(text)
