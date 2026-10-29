@@ -136,7 +136,6 @@ def fix_unverified_ufs_source():
             return 'gRootDiagnostic.stage = "%s";\n    IOLog ("NATIVE_UFS stage: %s");' % (label, label)
 
         text, _count = _re2.subn(r'gRootDiagnostic\.stage = "([^"]*)";', _mirror, text)
-        text = text.replace('// ROOT_CHECK_IOLOG', '// STAGE_IOLOG', 1)
         print('NativeUfs: %d stage assignments mirrored to IOLog' % _count)
 
     text = source.read_text()
