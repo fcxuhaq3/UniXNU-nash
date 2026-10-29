@@ -81,74 +81,35 @@ if component in ('NativeVirtioBlock', 'NativeRamBlock', 'NativeUfs'):
 INSPECT_TEXT = """
       void NativeUfs::inspect (void)
       {
-        OSSharedPtr<IOMemoryMap> gccMap, aggreMap, hcMap;
-        IOLog ("NATIVE_UFS: bcr 1 (map GCC + AGGRE1)");
-        uintptr_t gcc = mapPhys (GCC_BASE + 0x75000, 0x2000, gccMap);
-        uintptr_t aggre = mapPhys (GCC_BASE + 0x82000, 0x1000, aggreMap);
-        if (!gcc || !aggre) {
-          IOLog ("NATIVE_UFS: bcr abort (map failed)");
-          return;
-        }
-        IOLog ("NATIVE_UFS: bcr 2 BCR=%08x GLB_RESET=%08x", read32 (gcc, 0x000), read32 (gcc, 0x004));
-        IOLog ("NATIVE_UFS: bcr 3 CGC=%08x AXI=%08x AHB=%08x",
-               read32 (gcc, 0x0b0), read32 (gcc, 0x008), read32 (gcc, 0x00c));
-        // clk_rcg2 update: src_sel[2:0], div[12:8], CFG_UPDATE bit20.
-        IOLog ("NATIVE_UFS: bcr 4 (RCG axi div3, unipro div4)");
-        {
-          uint32_t cfg = read32 (gcc, 0x018) & ~(0x7U | (0x1FU << 8));
-          write32 (gcc, 0x018, cfg | (3U << 8) | (1U << 20));
-          cfg = read32 (gcc, 0x028) & ~(0x7U | (0x1FU << 8));
-          write32 (gcc, 0x028, cfg | (4U << 8) | (1U << 20));
-          IOLog ("NATIVE_UFS: bcr 5 rcg writes returned");
-        }
-        IOLog ("NATIVE_UFS: bcr 6 (enable all UFS branches)");
-        write32 (gcc, 0x008, read32 (gcc, 0x008) | 1U);
-        write32 (gcc, 0x00c, read32 (gcc, 0x00c) | 1U);
-        write32 (gcc, 0x010, read32 (gcc, 0x010) | 1U);
-        write32 (gcc, 0x014, read32 (gcc, 0x014) | 1U);
-        write32 (gcc, 0x608, read32 (gcc, 0x608) | 1U);
-        write32 (gcc, 0x60c, read32 (gcc, 0x60c) | 1U);
-        write32 (gcc, 0x640, read32 (gcc, 0x640) | 1U);
-        write32 (gcc, 0x65c, read32 (gcc, 0x65c) | 1U);
-        write32 (aggre, 0x028, read32 (aggre, 0x028) | 1U);
-        IOLog ("NATIVE_UFS: bcr 7 branch writes returned");
-        IOLog ("NATIVE_UFS: bcr 8 BCR_after_clocks=%08x GDSCR=%08x",
-               read32 (gcc, 0x000), read32 (gcc, 0x004));
-        IOLog ("NATIVE_UFS: bcr 9 (GDSC on, then re-snapshot)");
-        write32 (gcc, 0x004, read32 (gcc, 0x004) & ~1U);
-        for (unsigned index = 0; index < 200; index++) {
-          if (read32 (gcc, 0x004) & 0x80000000U) {
-            break;
-          }
-          IODelay (10);
-        }
-        IOLog ("NATIVE_UFS: bcr 10 BCR=%08x GDSCR=%08x AXI=%08x AHB=%08x",
-               read32 (gcc, 0x000), read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c));
-        IOLog ("NATIVE_UFS: bcr 11 (map HC)");
+        OSSharedPtr<IOMemoryMap> hcMap, phyMap;
+        IOLog ("NATIVE_UFS: wk 1 (map HC + PHY)");
         uintptr_t hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, hcMap);
-        if (!hc) {
-          IOLog ("NATIVE_UFS: bcr abort (HC map failed)");
+        uintptr_t phy = mapPhys (0x01da7000ULL, 0x1000, phyMap);
+        if (!hc || !phy) {
+          IOLog ("NATIVE_UFS: wk abort hc=%p phy=%p", (void *) hc, (void *) phy);
           return;
         }
-        IOLog ("NATIVE_UFS: bcr 12 CAP=%08x VER=%08x HCS=%08x HCE=%08x",
+        IOLog ("NATIVE_UFS: wk 2 before CAP=%08x VER=%08x HCS=%08x HCE=%08x",
                read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x30), read32 (hc, 0x34));
-        // One controlled reset cycle: QCOM BCR bit0 asserts the block reset and self-clears.
-        IOLog ("NATIVE_UFS: bcr 13 (assert UFS BCR bit0)");
-        write32 (gcc, 0x000, read32 (gcc, 0x000) | 1U);
-        IOLog ("NATIVE_UFS: bcr 14 bcr write returned");
-        for (unsigned index = 0; index < 100; index++) {
-          if ((read32 (gcc, 0x000) & 1U) == 0) {
+        IOLog ("NATIVE_UFS: wk 3 PHY before %08x %08x %08x %08x",
+               read32 (phy, 0x00), read32 (phy, 0x04), read32 (phy, 0x08), read32 (phy, 0x0c));
+        // The firmware left the controller enabled (CAP=1587001F HCE=1). Restore that.
+        IOLog ("NATIVE_UFS: wk 4 (write HCE=1)");
+        write32 (hc, 0x34, 1U);
+        IOLog ("NATIVE_UFS: wk 5 HCE write returned");
+        for (unsigned index = 0; index < 200; index++) {
+          if (read32 (hc, 0x34) & 1U) {
             break;
           }
           IODelay (10);
         }
-        IOLog ("NATIVE_UFS: bcr 15 BCR=%08x GDSCR=%08x", read32 (gcc, 0x000), read32 (gcc, 0x004));
-        IOLog ("NATIVE_UFS: bcr 16 CAP=%08x HCS=%08x", read32 (hc, 0x00), read32 (hc, 0x30));
+        IOLog ("NATIVE_UFS: wk 6 after CAP=%08x VER=%08x HCS=%08x HCE=%08x",
+               read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x30), read32 (hc, 0x34));
+        IOLog ("NATIVE_UFS: wk 7 PHY after %08x %08x %08x %08x",
+               read32 (phy, 0x00), read32 (phy, 0x04), read32 (phy, 0x08), read32 (phy, 0x0c));
         for (;;) {
-          IOLog ("NATIVE_UFS-RESULT bcr=%08x gdsc=%08x axi=%08x ahb=%08x",
-                 read32 (gcc, 0x000), read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c));
-          IOLog ("NATIVE_UFS-RESULT cap=%08x ver=%08x hcs=%08x hce=%08x",
-                 read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x30), read32 (hc, 0x34));
+          IOLog ("NATIVE_UFS-RESULT cap=%08x hcs=%08x hce=%08x ver=%08x",
+                 read32 (hc, 0x00), read32 (hc, 0x30), read32 (hc, 0x34), read32 (hc, 0x08));
           IODelay (500000);
         }
       }
