@@ -309,6 +309,20 @@ def fix_unverified_ufs_source():
             source.write_text(text)
             print('NativeUfs: probe=10 root check now reports through IOLog')
 
+    # MSM8998_NO_SMMU: smmuBypassStream maps 0x15000000, which is SM8550's SMMU. On nash
+    # that map fails and the function panics, and nash cannot print panics, so the whole
+    # bring-up dies silently. The nash device tree gives the UFS no iommus, so make the
+    # bypass a no-op and keep the reported stage.
+    text = text.replace(
+        '  uintptr_t smmu = mapPhys (0x15000000ULL, 0xd0000, keep);\n  if (!smmu) {\n    panic ("NATIVE_UFS smmu: map failed");\n  }',
+        '  // MSM8998_NO_SMMU: the UFS on this board has no iommus and 0x15000000 is not its\n'
+        '  // SMMU, so leave the stream alone instead of panicking.\n'
+        '  (void) stream; (void) keep; (void) report; (void) dma; (void) bytes;\n'
+        '  IOLog ("NATIVE_UFS: SMMU bypass skipped (MSM8998)");\n'
+        '  return;', 1)
+    if 'MSM8998_NO_SMMU' in text:
+        print('NativeUfs: SMMU bypass turned into a no-op')
+
         else:
             print('NativeUfs: probe=10 block did not match; left unchanged')
     # One compact result line, printed three times: the framebuffer console overlaps rows
