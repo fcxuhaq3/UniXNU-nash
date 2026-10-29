@@ -299,6 +299,28 @@ def fix_unverified_ufs_source():
             text = text.replace(old, new, 1)
             source.write_text(text)
             print('NativeUfs: probe=10 root check now reports through IOLog')
+
+    # hostBringUp only records a stage string, so a stall inside it is invisible. Mirror
+    # every stage assignment into IOLog, and log the bring-up result.
+    text = source.read_text()
+    if 'STAGE_IOLOG' not in text:
+        import re as _re2
+        def _mirror(match):
+            label = match.group(1)
+            return ('gRootDiagnostic.stage = "%s";\n    IOLog ("NATIVE_UFS stage: %s");'
+                    % (label, label))
+        text, count = _re2.subn(r'gRootDiagnostic\.stage = "([^"]*)";', _mirror, text)
+        result_anchor = """  if (!hostBringUp (&why)) {
+    *why = *why;
+    return false;
+  }"""
+        text = text.replace(
+            "  if (!hostBringUp (&why)) {\n    *why = \"transport quarantined\";",
+            "  if (!hostBringUp (&why)) {\n    IOLog (\"NATIVE_UFS: bring-up failed: %s\", *why);\n    *why = \"transport quarantined\";",
+            1)
+        text = text.replace('// ROOT_CHECK_IOLOG', '// STAGE_IOLOG', 1)
+        source.write_text(text)
+        print('NativeUfs: %d stage assignments mirrored to IOLog' % count)
         else:
             print('NativeUfs: probe=10 block did not match; left unchanged')
     # One compact result line, printed three times: the framebuffer console overlaps rows
