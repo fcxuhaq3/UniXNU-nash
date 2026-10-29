@@ -88,41 +88,61 @@ INSPECT_TEXT = """
           IOLog ("NATIVE_UFS: wr abort (GCC map failed)");
           return;
         }
-        IOLog ("NATIVE_UFS: wr 2 gdsc=%08x axi=%08x ahb=%08x",
-               read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c));
-        IOLog ("NATIVE_UFS: wr 3 (enable AHB 0x17500c bit0)");
+        IOLog ("NATIVE_UFS: wr 2 gdsc=%08x axi=%08x ahb=%08x rcg=%08x",
+               read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c),
+               read32 (gcc, 0x018));
+        // clk_rcg2: CFG_SRC_SEL bits[2:0], CFG_SRC_DIV bits[12:8], CFG_UPDATE bit20.
+        // ftbl: 200 MHz = GPLL0_OUT_MAIN / 3, and src 0 selects that parent here.
+        IOLog ("NATIVE_UFS: wr 3 (configure RCG 0x75018: div 3 = 200 MHz)");
+        {
+          uint32_t cfg = read32 (gcc, 0x018);
+          cfg &= ~((0x7U) | (0x1FU << 8));
+          cfg |= (3U << 8) | (1U << 20);
+          write32 (gcc, 0x018, cfg);
+          IOLog ("NATIVE_UFS: wr 4 rcg write returned val=%08x", cfg);
+          for (unsigned index = 0; index < 100; index++) {
+            if ((read32 (gcc, 0x018) & (1U << 20)) == 0) {
+              break;
+            }
+            IODelay (10);
+          }
+          IOLog ("NATIVE_UFS: wr 5 rcg=%08x", read32 (gcc, 0x018));
+        }
+        IOLog ("NATIVE_UFS: wr 6 (enable AXI 0x175008 + AHB 0x17500c)");
+        write32 (gcc, 0x008, read32 (gcc, 0x008) | 1U);
         write32 (gcc, 0x00c, read32 (gcc, 0x00c) | 1U);
-        IOLog ("NATIVE_UFS: wr 4 ahb write returned");
+        IOLog ("NATIVE_UFS: wr 7 branch writes returned");
         for (unsigned index = 0; index < 100; index++) {
           if ((read32 (gcc, 0x00c) & 0x80000000U) == 0) {
             break;
           }
           IODelay (10);
         }
-        IOLog ("NATIVE_UFS: wr 5 ahb=%08x", read32 (gcc, 0x00c));
-        IOLog ("NATIVE_UFS: wr 6 (GDSC on 0x175004)");
+        IOLog ("NATIVE_UFS: wr 8 axi=%08x ahb=%08x", read32 (gcc, 0x008), read32 (gcc, 0x00c));
+        IOLog ("NATIVE_UFS: wr 9 (GDSC on 0x175004)");
         write32 (gcc, 0x004, read32 (gcc, 0x004) & ~1U);
-        IOLog ("NATIVE_UFS: wr 7 gdsc write returned");
+        IOLog ("NATIVE_UFS: wr 10 gdsc write returned");
         for (unsigned index = 0; index < 200; index++) {
           if (read32 (gcc, 0x004) & 0x80000000U) {
             break;
           }
           IODelay (10);
         }
-        IOLog ("NATIVE_UFS: wr 8 gdsc=%08x", read32 (gcc, 0x004));
-        IOLog ("NATIVE_UFS: wr 9 (map HC)");
+        IOLog ("NATIVE_UFS: wr 11 gdsc=%08x", read32 (gcc, 0x004));
+        IOLog ("NATIVE_UFS: wr 12 (map HC)");
         uintptr_t hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, hcMap);
         if (!hc) {
           IOLog ("NATIVE_UFS: wr abort (HC map failed)");
           return;
         }
-        IOLog ("NATIVE_UFS: wr 10 CAP=%08x", read32 (hc, 0x00));
-        IOLog ("NATIVE_UFS: wr 11 VER=%08x", read32 (hc, 0x08));
-        IOLog ("NATIVE_UFS: wr 12 HCS=%08x", read32 (hc, 0x30));
-        IOLog ("NATIVE_UFS: wr 13 HCE=%08x", read32 (hc, 0x34));
+        IOLog ("NATIVE_UFS: wr 13 CAP=%08x", read32 (hc, 0x00));
+        IOLog ("NATIVE_UFS: wr 14 VER=%08x", read32 (hc, 0x08));
+        IOLog ("NATIVE_UFS: wr 15 HCS=%08x", read32 (hc, 0x30));
+        IOLog ("NATIVE_UFS: wr 16 HCE=%08x", read32 (hc, 0x34));
         for (;;) {
-          IOLog ("NATIVE_UFS-RESULT gdsc=%08x axi=%08x ahb=%08x",
-                 read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c));
+          IOLog ("NATIVE_UFS-RESULT gdsc=%08x axi=%08x ahb=%08x rcg=%08x",
+                 read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c),
+                 read32 (gcc, 0x018));
           IOLog ("NATIVE_UFS-RESULT cap=%08x ver=%08x hcs=%08x hce=%08x",
                  read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x30), read32 (hc, 0x34));
           IODelay (500000);
