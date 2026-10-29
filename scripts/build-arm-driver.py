@@ -331,7 +331,7 @@ def fix_unverified_ufs_source():
         'NATIVE_UFS: probe called',
         'NATIVE_UFS: start probe=',
         'ML_IO_MAP_DEVICE',
-        'NATIVE_UFS: inspect 1',
+        'NATIVE_UFS: wk 2 before',
         'ROOT_CHECK_IOLOG',
     )
     if not all(marker in text for marker in expected):
