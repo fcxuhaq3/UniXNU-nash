@@ -334,16 +334,33 @@ def fix_unverified_ufs_source():
 
 
 
-    # MSM8998_NO_SMMU: smmuBypassStream maps 0x15000000, which is SM8550's SMMU. On nash
-    # that map fails and the function panics, and nash cannot print panics, so bring-up
-    # dies silently. The nash device tree gives the UFS no iommus: make it a no-op.
-    text = text.replace(
-        '  uintptr_t smmu = mapPhys (0x15000000ULL, 0xd0000, keep);\\n  if (!smmu) {\\n    panic ("NATIVE_UFS smmu: map failed");\\n  }',
-        '  (void) stream; (void) keep; (void) report; (void) dma; (void) bytes;\\n'
-        '  IOLog ("NATIVE_UFS: SMMU bypass skipped (MSM8998)");\\n'
-        '  return;', 1)
-    if 'SMMU bypass skipped' in text:
-        print('NativeUfs: SMMU bypass turned into a no-op')
+    # MSM8998_SMMU_STUB: smmuBypassStream pins 0x15000000, which is SM8550's SMMU. On nash
+    # that map fails and the function panics; nash cannot print panics, so the whole
+    # bring-up dies at that stage. The nash device tree gives the UFS no iommus, so
+    # replace the function with a stub instead of letting it run.
+    lines = text.splitlines(keepends=True)
+    out_lines = []
+    skipping = False
+    stubbed = False
+    for line in lines:
+        if line.startswith('static void smmuBypassStream'):
+            skipping = True
+            stubbed = True
+            out_lines.append('static void smmuBypassStream (uint16_t stream, OSSharedPtr<IOMemoryMap> &keep, uint32_t *report,\n')
+            out_lines.append('                              uint64_t dma, uint64_t bytes)\n')
+            out_lines.append('{\n')
+            out_lines.append('  (void) stream; (void) keep; (void) report; (void) dma; (void) bytes;\n')
+            out_lines.append('  IOLog ("NATIVE_UFS: SMMU bypass skipped (MSM8998)");\n')
+            out_lines.append('}\n')
+            continue
+        if skipping:
+            if line.startswith('}'):
+                skipping = False
+            continue
+        out_lines.append(line)
+    if stubbed:
+        text = ''.join(out_lines)
+        print('NativeUfs: smmuBypassStream replaced with a stub')
 
     # GUARD: a re-read once silently discarded every patch above, so verify the final
     # source actually carries each marker before writing it.
