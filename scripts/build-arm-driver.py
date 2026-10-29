@@ -82,37 +82,49 @@ INSPECT_TEXT = """
       void NativeUfs::inspect (void)
       {
         OSSharedPtr<IOMemoryMap> gccMap, hcMap;
-        IOLog ("NATIVE_UFS: rd 1 (map GCC 0x75000)");
+        IOLog ("NATIVE_UFS: wr 1 (map GCC 0x75000)");
         uintptr_t gcc = mapPhys (GCC_BASE + 0x75000, 0x2000, gccMap);
-        IOLog ("NATIVE_UFS: rd 2 gcc=%p", (void *) gcc);
         if (!gcc) {
-          IOLog ("NATIVE_UFS: rd abort (GCC map failed)");
+          IOLog ("NATIVE_UFS: wr abort (GCC map failed)");
           return;
         }
-        IOLog ("NATIVE_UFS: rd 3 GDSCR=%08x", read32 (gcc, 0x004));
-        IOLog ("NATIVE_UFS: rd 4 AXI=%08x", read32 (gcc, 0x008));
-        IOLog ("NATIVE_UFS: rd 5 AHB=%08x", read32 (gcc, 0x00c));
-        IOLog ("NATIVE_UFS: rd 6 (map HC 0x1da4000)");
+        IOLog ("NATIVE_UFS: wr 2 gdsc=%08x axi=%08x ahb=%08x",
+               read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c));
+        IOLog ("NATIVE_UFS: wr 3 (enable AHB 0x17500c bit0)");
+        write32 (gcc, 0x00c, read32 (gcc, 0x00c) | 1U);
+        IOLog ("NATIVE_UFS: wr 4 ahb write returned");
+        for (unsigned index = 0; index < 100; index++) {
+          if ((read32 (gcc, 0x00c) & 0x80000000U) == 0) {
+            break;
+          }
+          IODelay (10);
+        }
+        IOLog ("NATIVE_UFS: wr 5 ahb=%08x", read32 (gcc, 0x00c));
+        IOLog ("NATIVE_UFS: wr 6 (GDSC on 0x175004)");
+        write32 (gcc, 0x004, read32 (gcc, 0x004) & ~1U);
+        IOLog ("NATIVE_UFS: wr 7 gdsc write returned");
+        for (unsigned index = 0; index < 200; index++) {
+          if (read32 (gcc, 0x004) & 0x80000000U) {
+            break;
+          }
+          IODelay (10);
+        }
+        IOLog ("NATIVE_UFS: wr 8 gdsc=%08x", read32 (gcc, 0x004));
+        IOLog ("NATIVE_UFS: wr 9 (map HC)");
         uintptr_t hc = mapPhys (UFS_HC_BASE, UFS_HC_SIZE, hcMap);
-        IOLog ("NATIVE_UFS: rd 7 hc=%p", (void *) hc);
         if (!hc) {
-          IOLog ("NATIVE_UFS: rd abort (HC map failed)");
+          IOLog ("NATIVE_UFS: wr abort (HC map failed)");
           return;
         }
-        IOLog ("NATIVE_UFS: rd 8 CAP=%08x", read32 (hc, 0x00));
-        IOLog ("NATIVE_UFS: rd 9 VER=%08x", read32 (hc, 0x08));
-        IOLog ("NATIVE_UFS: rd 10 PID=%08x", read32 (hc, 0x10));
-        IOLog ("NATIVE_UFS: rd 11 MID=%08x", read32 (hc, 0x14));
-        IOLog ("NATIVE_UFS: rd 12 HCS=%08x", read32 (hc, 0x30));
-        IOLog ("NATIVE_UFS: rd 13 HCE=%08x", read32 (hc, 0x34));
-        // Nothing is written: the AXI branch already reports bit0 set, and a store to an
-        // inaccessible GCC register stops the core without a next log line.
+        IOLog ("NATIVE_UFS: wr 10 CAP=%08x", read32 (hc, 0x00));
+        IOLog ("NATIVE_UFS: wr 11 VER=%08x", read32 (hc, 0x08));
+        IOLog ("NATIVE_UFS: wr 12 HCS=%08x", read32 (hc, 0x30));
+        IOLog ("NATIVE_UFS: wr 13 HCE=%08x", read32 (hc, 0x34));
         for (;;) {
-          IOLog ("NATIVE_UFS-RESULT cap=%08x ver=%08x pid=%08x mid=%08x",
-                 read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x10), read32 (hc, 0x14));
-          IOLog ("NATIVE_UFS-RESULT hcs=%08x hce=%08x gdsc=%08x axi=%08x ahb=%08x",
-                 read32 (hc, 0x30), read32 (hc, 0x34), read32 (gcc, 0x004),
-                 read32 (gcc, 0x008), read32 (gcc, 0x00c));
+          IOLog ("NATIVE_UFS-RESULT gdsc=%08x axi=%08x ahb=%08x",
+                 read32 (gcc, 0x004), read32 (gcc, 0x008), read32 (gcc, 0x00c));
+          IOLog ("NATIVE_UFS-RESULT cap=%08x ver=%08x hcs=%08x hce=%08x",
+                 read32 (hc, 0x00), read32 (hc, 0x08), read32 (hc, 0x30), read32 (hc, 0x34));
           IODelay (500000);
         }
       }
