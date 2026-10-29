@@ -163,7 +163,6 @@ def fix_unverified_ufs_source():
     # The verification timers live inside the NATIVE_VERIFIED_BLOCK block, so the
     # --unverified transport has no timerTicks. Provide harmless fallbacks instead of
     # rewriting every call site.
-    text = source.read_text()
     if 'NATIVE_UFS_TIMER_FALLBACK' not in text:
         include_anchor = '#include <pexpert/pexpert.h>'
         fallback = (
@@ -186,7 +185,6 @@ def fix_unverified_ufs_source():
     # A standalone IODeviceMemory has no provider, so map() may hand back ordinary
     # memory: the GCC reads disagreed run to run and a store stalled the core. ml_io_map
     # is the kernel's own device mapping and is always uncached device memory.
-    text = source.read_text()
     if 'ML_IO_MAP_DEVICE' not in text:
         old_map = """  IODeviceMemory *memory = IODeviceMemory::withRange (phys, length);
   if (!memory) {
@@ -345,6 +343,7 @@ def fix_unverified_ufs_source():
         'ML_IO_MAP_DEVICE',
         'NATIVE_UFS: wk 2 before',
         'ROOT_CHECK_IOLOG',
+        'NATIVE_UFS stage:',
     )
     if not all(marker in text for marker in expected):
         missing = [marker for marker in expected if marker not in text]
