@@ -248,6 +248,60 @@ def fix_unverified_ufs_source():
     if begin >= 0 and end > begin:
         text = text[:begin] + INSPECT_TEXT + text[end:]
         print('NativeUfs: inspect() replaced with the MSM8998 register probe')
+
+    # probe=10 does the read-only root check, but every report on that path is a panic()
+    # and nash leaves gPanicBase at 0, so it would hang silently. Report through IOLog
+    # and hold the boot afterwards so the numbers stay on screen.
+    text = source.read_text()
+    if 'ROOT_CHECK_IOLOG' not in text:
+        old = """  if (probe == 10) {
+    // Read-only check before anything is flashed: LUN 0 GPT -> "userdata" -> its first block.
+    const char *why = "";
+    if (!hostBringUp (&why)) {
+      panic ("NATIVE_UFS root check: bring-up failed: %s", why);
+    }
+    RootLayout *layout = static_cast<RootLayout *> (IOMalloc (sizeof (RootLayout)));
+    if (!layout || !findRootLayout (layout, &why)) {
+      panic ("NATIVE_UFS root check: %s", why);
+    }
+    panic ("NATIVE_UFS root check\\n"
+           "userdata first=%llx last=%llx\\n"
+           "block0 magic %08x %08x ext4magic=%04x ext4blocks=%u\\n"
+           "manifest status=%u windows=%u",
+           layout->userdataFirst, layout->userdataLast, layout->magic0, layout->magic1,
+           layout->ext4Magic, layout->ext4Blocks, layout->manifestStatus, layout->windows);
+  }"""
+        new = """  if (probe == 10) {
+    // ROOT_CHECK_IOLOG: read-only root check, reported through IOLog because nash has no
+    // panic-log buffer.
+    const char *why = "";
+    if (!hostBringUp (&why)) {
+      for (;;) {
+        IOLog ("NATIVE_UFS root check: bring-up failed: %s", why);
+        IODelay (500000);
+      }
+    }
+    RootLayout *layout = static_cast<RootLayout *> (IOMalloc (sizeof (RootLayout)));
+    if (!layout || !findRootLayout (layout, &why)) {
+      for (;;) {
+        IOLog ("NATIVE_UFS root check: %s", why);
+        IODelay (500000);
+      }
+    }
+    for (;;) {
+      IOLog ("NATIVE_UFS root check userdata first=%llx last=%llx "
+             "block0 %08x %08x ext4magic=%04x ext4blocks=%u manifest=%u windows=%u",
+             layout->userdataFirst, layout->userdataLast, layout->magic0, layout->magic1,
+             layout->ext4Magic, layout->ext4Blocks, layout->manifestStatus, layout->windows);
+      IODelay (500000);
+    }
+  }"""
+        if old in text:
+            text = text.replace(old, new, 1)
+            source.write_text(text)
+            print('NativeUfs: probe=10 root check now reports through IOLog')
+        else:
+            print('NativeUfs: probe=10 block did not match; left unchanged')
     # One compact result line, printed three times: the framebuffer console overlaps rows
     # when the boot log is long, and a single line has the best chance of staying legible.
     if 'NATIVE_UFS-RESULT' not in text:
