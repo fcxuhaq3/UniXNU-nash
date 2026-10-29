@@ -252,7 +252,6 @@ def fix_unverified_ufs_source():
     # probe=10 does the read-only root check, but every report on that path is a panic()
     # and nash leaves gPanicBase at 0, so it would hang silently. Report through IOLog
     # and hold the boot afterwards so the numbers stay on screen.
-    text = source.read_text()
     if 'ROOT_CHECK_IOLOG' not in text:
         old = """  if (probe == 10) {
     // Read-only check before anything is flashed: LUN 0 GPT -> "userdata" -> its first block.
@@ -324,10 +323,23 @@ def fix_unverified_ufs_source():
             source.write_text(text)
             print('NativeUfs: compact result line installed')
 
+
+
+    # GUARD: a re-read once silently discarded every patch above, so verify the final
+    # source actually carries each marker before writing it.
+    expected = (
+        'NATIVE_UFS: probe called',
+        'NATIVE_UFS: start probe=',
+        'ML_IO_MAP_DEVICE',
+        'NATIVE_UFS: inspect 1',
+        'ROOT_CHECK_IOLOG',
+    )
+    if not all(marker in text for marker in expected):
+        missing = [marker for marker in expected if marker not in text]
+        raise SystemExit('NativeUfs: patch guard failed, missing %s' % missing)
+
     source.write_text(text)
-
-
-
+    print('NativeUfs: guard passed, all markers present')
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
