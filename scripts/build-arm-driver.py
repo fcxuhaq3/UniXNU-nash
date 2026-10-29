@@ -171,11 +171,11 @@ def fix_unverified_ufs_source():
             '// NATIVE_UFS_TIMER_FALLBACK: the verification timers are only defined for the\n'
             '// verified build; the bring-up transport only reports them, so zeros are fine.\n'
             '#if !defined(NATIVE_VERIFIED_BLOCK) || !NATIVE_VERIFIED_BLOCK\n'
-            'volatile uint64_t native_ufs_read_ticks = 0;\n'
-            'volatile uint64_t native_ufs_verify_ticks = 0;\n'
-            'volatile uint64_t native_ufs_verified_blocks = 0;\n'
-            'volatile uint32_t native_ufs_integrity_failures = 0;\n'
-            'static inline uint64_t timerTicks (void) { return 0; }\n'
+            'volatile uint64_t native_ufs_read_ticks __attribute__((unused)) = 0;\n'
+            'volatile uint64_t native_ufs_verify_ticks __attribute__((unused)) = 0;\n'
+            'volatile uint64_t native_ufs_verified_blocks __attribute__((unused)) = 0;\n'
+            'volatile uint32_t native_ufs_integrity_failures __attribute__((unused)) = 0;\n'
+            'static inline __attribute__((unused)) uint64_t timerTicks (void) { return 0; }\n'
             '#endif')
         if include_anchor in text:
             text = text.replace(include_anchor, fallback, 1)
