@@ -127,6 +127,8 @@ def fix_unverified_ufs_source():
     source = ROOT / 'drivers/NativeUfs/NativeUfs.cpp'
     if not source.is_file():
         return
+    text = source.read_text()
+
     # hostBringUp only records a stage string, so a stall inside it stays invisible.
     if 'STAGE_IOLOG' not in text:
         import re as _re2
@@ -137,8 +139,6 @@ def fix_unverified_ufs_source():
 
         text, _count = _re2.subn(r'gRootDiagnostic\.stage = "([^"]*)";', _mirror, text)
         print('NativeUfs: %d stage assignments mirrored to IOLog' % _count)
-
-    text = source.read_text()
 
     old_read = """    IOReturn read (uint64_t lba, uint32_t blocks, void *out) {
       uint64_t t0 = timerTicks ();
