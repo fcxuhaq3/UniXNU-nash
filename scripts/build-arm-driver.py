@@ -384,6 +384,20 @@ def fix_unverified_ufs_source():
         text = '// PANIC_TO_IOLOG\n' + text
         print('NativeUfs: %d panic() calls converted to IOLog' % _pcount)
 
+    # ARMCPU_NO_PANIC: a failed secondary-CPU start panics, and on nash a panic prints
+    # nothing and kills the boot before the storage driver can run. Report and continue.
+    armcpu_path = ROOT / 'drivers/ArmCpu/ArmCpuPkg/Driver/ArmCpu.cpp'
+    if armcpu_path.is_file() and 'ARMCPU_NO_PANIC' not in armcpu_path.read_text():
+        import re as _re5
+        acpu = armcpu_path.read_text()
+        if '#include <IOKit/IOLib.h>' not in acpu:
+            acpu = acpu.replace('#include <IOKit/IOCPU.h>',
+                                '#include <IOKit/IOLib.h>\n#include <IOKit/IOCPU.h>', 1)
+        acpu, _acount = _re5.subn(r'\bpanic \(', 'IOLog (', acpu)
+        acpu = '// ARMCPU_NO_PANIC\n' + acpu
+        armcpu_path.write_text(acpu)
+        print('ArmCpu: %d panic() calls converted to IOLog' % _acount)
+
     # GUARD: a re-read once silently discarded every patch above, so verify the final
     # source actually carries each marker before writing it.
     expected = (
