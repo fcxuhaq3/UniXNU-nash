@@ -37,6 +37,10 @@ UFS_HC = 0x1DA4000
 UFS_HC_SIZE = 0x2500
 UFS_PHY = 0x1DA7000
 UFS_PHY_SIZE = 0x1000
+# Panic log region: XNU maps it read/write and writes the panic header there.
+# Carved from the top of DRAM and removed from the reported size, so nothing
+# else in the boot chain can hand the same bytes to someone else.
+PANIC_LOG_SIZE = 0x100000
 
 
 def node(name, properties=(), children=()):
@@ -153,8 +157,9 @@ def main():
                           if (args.data_ramdisk or args.packed_data_ramdisk) and not args.persistent_data else []),
                         *( [('darwinboot-memory-size', struct.pack('<Q', args.owned_memory_size))]
                            if args.owned_memory_size else [] ),
+                        ('embedded-panic-log-size', struct.pack('<I', PANIC_LOG_SIZE)),
                         ('dram-base', struct.pack('<Q', DRAM_BASE)),
-                        ('dram-size', struct.pack('<Q', args.dram_size)),
+                        ('dram-size', struct.pack('<Q', args.dram_size - PANIC_LOG_SIZE)),
                         # Image4 hash algorithm. The target iPad's DT specifies sha2-384 in /chosen; this
                         # selects the algorithm only and asserts nothing about Apple silicon or fuses.
                         ('crypto-hash-method', b'sha2-384\0'),
@@ -172,6 +177,12 @@ def main():
                                  ([('GpuAddon', bytes(16))] if args.gpu_addon else [])),
               # Read by the original AppleImage4 at start-up; present and empty here.
               node('manifest-properties')]),
+        # XNU's check_for_panic_log() reads pram/reg: two 64-bit cells,
+        # physical address then region size.
+        node('pram', [('reg', struct.pack('<4I',
+                          (DRAM_BASE + args.dram_size - PANIC_LOG_SIZE) >> 32,
+                          (DRAM_BASE + args.dram_size - PANIC_LOG_SIZE) & 0xffffffff,
+                          PANIC_LOG_SIZE >> 32, PANIC_LOG_SIZE & 0xffffffff))]),
         node('cpus', children=cpus),
         *([node('psci', [('compatible', b'arm,psci-1.0\0'), ('method', args.psci_method.encode() + b'\0')])] if len(cpus) > 1 else []),
         # Suspend/resume is not implemented for this board. Use the original
