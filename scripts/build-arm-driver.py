@@ -157,6 +157,19 @@ def fix_armcpu_source():
     acpu = '// ARMCPU_NO_PANIC\n' + acpu
     armcpu_path.write_text(acpu)
 
+    # PANIC_MARKER: see the NativeUfs note; ArmCpu panics are equally invisible on nash.
+    if 'PANIC_MARKER_ARM' not in acpu3:
+        import re as _re7
+        acpu3, _acount2 = _re7.subn(r'(?<![A-Z_])panic\s*\(', 'ARMCPU_PANIC (', acpu3)
+        acpu3 = ('// PANIC_MARKER_ARM\n'
+                 '#define ARMCPU_PANIC(...) do { \\\n'
+                 '  IOLog ("ARMCPU_FATAL %s:%d", __FILE__, __LINE__); \\\n'
+                 '  panic (__VA_ARGS__); \\\n'
+                 '} while (0)\n') + acpu3
+        armcpu_path.write_text(acpu3)
+        print('ArmCpu: %d panic() calls wrapped with a marker' % _acount2)
+
+
 
 def fix_unverified_ufs_source():
     """Make NativeUfs build and run on nash (MSM8998).
@@ -417,6 +430,19 @@ def fix_unverified_ufs_source():
                 print('NativeUfs: %d SMMU header helper(s) marked static inline' % _n)
 
 
+
+    # PANIC_MARKER: nash cannot print panic() text, so a fatal check is invisible. Keep the
+    # real panic (its control flow matters) and log a file:line marker right before it, so
+    # the last line on screen names the call site.
+    if 'PANIC_MARKER_UF' not in text:
+        import re as _re6
+        text, _pcount = _re6.subn(r'(?<![A-Z_])panic\s*\(', 'UFS_PANIC (', text)
+        text = ('// PANIC_MARKER_UF\n'
+                '#define UFS_PANIC(...) do { \\\n'
+                '  IOLog ("NATIVE_UFS_FATAL %s:%d", __FILE__, __LINE__); \\\n'
+                '  panic (__VA_ARGS__); \\\n'
+                '} while (0)\n') + text
+        print('NativeUfs: %d panic() calls wrapped with a marker' % _pcount)
 
     # GUARD: a re-read once silently discarded every patch above, so verify the final
     # source actually carries each marker before writing it.
