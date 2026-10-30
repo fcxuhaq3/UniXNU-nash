@@ -158,15 +158,15 @@ def fix_armcpu_source():
     armcpu_path.write_text(acpu)
 
     # PANIC_MARKER: see the NativeUfs note; ArmCpu panics are equally invisible on nash.
-    if 'PANIC_MARKER_ARM' not in acpu3:
+    if 'PANIC_MARKER_ARM' not in acpu:
         import re as _re7
-        acpu3, _acount2 = _re7.subn(r'(?<![A-Z_])panic\s*\(', 'ARMCPU_PANIC (', acpu3)
-        acpu3 = ('// PANIC_MARKER_ARM\n'
+        acpu, _acount2 = _re7.subn(r'(?<![A-Z_])panic\s*\(', 'ARMCPU_PANIC (', acpu)
+        acpu = ('// PANIC_MARKER_ARM\n'
                  '#define ARMCPU_PANIC(...) do { \\\n'
                  '  IOLog ("ARMCPU_FATAL %s:%d", __FILE__, __LINE__); \\\n'
                  '  panic (__VA_ARGS__); \\\n'
-                 '} while (0)\n') + acpu3
-        armcpu_path.write_text(acpu3)
+                 '} while (0)\n') + acpu
+        armcpu_path.write_text(acpu)
         print('ArmCpu: %d panic() calls wrapped with a marker' % _acount2)
 
 
