@@ -116,6 +116,53 @@ INSPECT_TEXT = """
 """
 
 
+def fix_armcpu_source():
+    """Make ArmCpu survive on nash: report instead of panicking, and let a
+    secondary core run the bring-up that already exists below the check."""
+    armcpu_path = ROOT / 'drivers/ArmCpu/ArmCpu.cpp'
+    if not armcpu_path.is_file():
+        print('ArmCpu: source not found')
+        return
+# ARMCPU_NO_PANIC: a failed secondary-CPU start panics, and on nash a panic prints
+# nothing and kills the boot before the storage driver can run. Report and continue.
+armcpu_path = ROOT / 'drivers/ArmCpu/ArmCpu.cpp'
+if armcpu_path.is_file() and 'ARMCPU_NO_PANIC' not in armcpu_path.read_text():
+    import re as _re5
+    acpu = armcpu_path.read_text()
+    if '#include <IOKit/IOLib.h>' not in acpu:
+        acpu = acpu.replace('#include <IOKit/IOCPU.h>',
+                            '#include <IOKit/IOLib.h>\n#include <IOKit/IOCPU.h>', 1)
+    acpu, _acount = _re5.subn(r'\bpanic \(', 'IOLog (', acpu)
+    acpu = '// ARMCPU_NO_PANIC\n' + acpu
+    armcpu_path.write_text(acpu)
+    print('ArmCpu: %d panic() calls converted to IOLog' % _acount)
+
+# ARMCPU_SECONDARY_OK: XNU calls cpu_init() -> initCPU(false) on every core it starts,
+# and ArmCpu panics on a secondary when boot is false, even though the body right
+# below already performs the full secondary bring-up. That panic kills the boot as
+# soon as PSCI CPU_ON succeeds, which is what made the failures look random.
+if armcpu_path.is_file():
+    acpu2 = armcpu_path.read_text()
+    if 'ARMCPU_SECONDARY_OK' not in acpu2:
+        # the panic-conversion pass above may already have rewritten this line
+        for form in (
+            '    if (!boot) { panic ("ArmCpu: secondary resume is unsupported"); }\n',
+            '    if (!boot) { IOLog ("ArmCpu: secondary resume is unsupported"); }\n',
+        ):
+            if form in acpu2:
+                acpu2 = acpu2.replace(
+                    form,
+                    '    // ARMCPU_SECONDARY_OK: the body below is the secondary bring-up.\n'
+                    '    IOLog ("ARMCPU_PATCH_REV_20261030_A secondary init id=%u boot=%u",\n'
+                    '           logicalId, boot ? 1 : 0);\n', 1)
+                break
+        armcpu_path.write_text(acpu2)
+        if 'ARMCPU_SECONDARY_OK' in acpu2:
+            print('ArmCpu: secondary init allowed on cpu_init(false)')
+        else:
+            print('ArmCpu: secondary panic line NOT found')
+
+
 def fix_unverified_ufs_source():
     """Make NativeUfs build and run on nash (MSM8998).
 
@@ -384,44 +431,6 @@ def fix_unverified_ufs_source():
         text = '// PANIC_TO_IOLOG\n' + text
         print('NativeUfs: %d panic() calls converted to IOLog' % _pcount)
 
-    # ARMCPU_NO_PANIC: a failed secondary-CPU start panics, and on nash a panic prints
-    # nothing and kills the boot before the storage driver can run. Report and continue.
-    armcpu_path = ROOT / 'drivers/ArmCpu/ArmCpu.cpp'
-    if armcpu_path.is_file() and 'ARMCPU_NO_PANIC' not in armcpu_path.read_text():
-        import re as _re5
-        acpu = armcpu_path.read_text()
-        if '#include <IOKit/IOLib.h>' not in acpu:
-            acpu = acpu.replace('#include <IOKit/IOCPU.h>',
-                                '#include <IOKit/IOLib.h>\n#include <IOKit/IOCPU.h>', 1)
-        acpu, _acount = _re5.subn(r'\bpanic \(', 'IOLog (', acpu)
-        acpu = '// ARMCPU_NO_PANIC\n' + acpu
-        armcpu_path.write_text(acpu)
-        print('ArmCpu: %d panic() calls converted to IOLog' % _acount)
-
-    # ARMCPU_SECONDARY_OK: XNU calls cpu_init() -> initCPU(false) on every core it starts,
-    # and ArmCpu panics on a secondary when boot is false, even though the body right
-    # below already performs the full secondary bring-up. That panic kills the boot as
-    # soon as PSCI CPU_ON succeeds, which is what made the failures look random.
-    if armcpu_path.is_file():
-        acpu2 = armcpu_path.read_text()
-        if 'ARMCPU_SECONDARY_OK' not in acpu2:
-            # the panic-conversion pass above may already have rewritten this line
-            for form in (
-                '    if (!boot) { panic ("ArmCpu: secondary resume is unsupported"); }\n',
-                '    if (!boot) { IOLog ("ArmCpu: secondary resume is unsupported"); }\n',
-            ):
-                if form in acpu2:
-                    acpu2 = acpu2.replace(
-                        form,
-                        '    // ARMCPU_SECONDARY_OK: the body below is the secondary bring-up.\n'
-                        '    IOLog ("ARMCPU_PATCH_REV_20261030_A secondary init id=%u boot=%u",\n'
-                        '           logicalId, boot ? 1 : 0);\n', 1)
-                    break
-            armcpu_path.write_text(acpu2)
-            if 'ARMCPU_SECONDARY_OK' in acpu2:
-                print('ArmCpu: secondary init allowed on cpu_init(false)')
-            else:
-                print('ArmCpu: secondary panic line NOT found')
 
     # GUARD: a re-read once silently discarded every patch above, so verify the final
     # source actually carries each marker before writing it.
@@ -439,6 +448,8 @@ def fix_unverified_ufs_source():
 
     source.write_text(text)
     print('NativeUfs: guard passed, all markers present')
+if component == 'ArmCpu':
+    fix_armcpu_source()
 if component == 'NativeUfs':
     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/NativeVirtioBlock'),
                 '-mgeneral-regs-only']
