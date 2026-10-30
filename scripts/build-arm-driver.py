@@ -136,6 +136,10 @@ def fix_armcpu_source():
         return
 
 
+    if '#include <IOKit/IOLib.h>' not in acpu:
+        acpu = acpu.replace('#include <IOKit/IOCPU.h>',
+                            '#include <IOKit/IOLib.h>\n#include <IOKit/IOCPU.h>', 1)
+
     for form in (
         '    if (!boot) { panic ("ArmCpu: secondary resume is unsupported"); }\n',
     ):
