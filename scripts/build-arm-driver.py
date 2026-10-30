@@ -135,15 +135,8 @@ def fix_armcpu_source():
         print('ArmCpu: already patched')
         return
 
-    if '#include <IOKit/IOLib.h>' not in acpu:
-        acpu = acpu.replace('#include <IOKit/IOCPU.h>',
-                            '#include <IOKit/IOLib.h>\n#include <IOKit/IOCPU.h>', 1)
-
-    acpu, count = re.subn(r'\bpanic \(', 'IOLog (', acpu)
-    print('ArmCpu: %d panic() calls converted to IOLog' % count)
 
     for form in (
-        '    if (!boot) { IOLog ("ArmCpu: secondary resume is unsupported"); }\n',
         '    if (!boot) { panic ("ArmCpu: secondary resume is unsupported"); }\n',
     ):
         if form in acpu:
@@ -419,15 +412,6 @@ def fix_unverified_ufs_source():
             if _n:
                 print('NativeUfs: %d SMMU header helper(s) marked static inline' % _n)
 
-    # PANIC_TO_IOLOG: nash cannot print panic() text, so a failing assert inside the UFS
-    # path shows up only as a bare BRK dump. Turn every panic() into an IOLog with a
-    # NATIVE_UFS prefix so the message lands in the boot log instead.
-    if 'PANIC_TO_IOLOG' not in text:
-        import re as _re4
-        text, _pcount = _re4.subn(r'\bpanic \(', 'IOLog (', text)
-        text = text.replace('// STAGE_IOLOG', '// STAGE_IOLOG', 1)
-        text = '// PANIC_TO_IOLOG\n' + text
-        print('NativeUfs: %d panic() calls converted to IOLog' % _pcount)
 
 
     # GUARD: a re-read once silently discarded every patch above, so verify the final
