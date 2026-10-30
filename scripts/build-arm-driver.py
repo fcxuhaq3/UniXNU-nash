@@ -386,7 +386,7 @@ def fix_unverified_ufs_source():
 
     # ARMCPU_NO_PANIC: a failed secondary-CPU start panics, and on nash a panic prints
     # nothing and kills the boot before the storage driver can run. Report and continue.
-    armcpu_path = ROOT / 'drivers/ArmCpu/ArmCpuPkg/Driver/ArmCpu.cpp'
+    armcpu_path = ROOT / 'drivers/ArmCpu/ArmCpu.cpp'
     if armcpu_path.is_file() and 'ARMCPU_NO_PANIC' not in armcpu_path.read_text():
         import re as _re5
         acpu = armcpu_path.read_text()
