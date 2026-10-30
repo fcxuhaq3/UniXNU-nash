@@ -398,6 +398,22 @@ def fix_unverified_ufs_source():
         armcpu_path.write_text(acpu)
         print('ArmCpu: %d panic() calls converted to IOLog' % _acount)
 
+    # ARMCPU_SECONDARY_OK: XNU calls cpu_init() -> initCPU(false) on every core it starts,
+    # and ArmCpu panics on a secondary when boot is false, even though the body right
+    # below already performs the full secondary bring-up. That panic kills the boot as
+    # soon as PSCI CPU_ON succeeds, which is what made the failures look random.
+    if armcpu_path.is_file():
+        acpu2 = armcpu_path.read_text()
+        if 'ARMCPU_SECONDARY_OK' not in acpu2:
+            acpu2 = acpu2.replace(
+                '    if (!boot) { panic ("ArmCpu: secondary resume is unsupported"); }\n',
+                '    // ARMCPU_SECONDARY_OK: allow the secondary body to run on cpu_init(false).\n'
+                '    IOLog ("ARMCPU_PATCH_REV_20261030_A secondary init allowed id=%u boot=%u",\n'
+                '           logicalId, boot ? 1 : 0);\n', 1)
+            armcpu_path.write_text(acpu2)
+            if 'ARMCPU_SECONDARY_OK' in acpu2:
+                print('ArmCpu: secondary init allowed on cpu_init(false)')
+
     # GUARD: a re-read once silently discarded every patch above, so verify the final
     # source actually carries each marker before writing it.
     expected = (
