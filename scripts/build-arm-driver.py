@@ -405,14 +405,23 @@ def fix_unverified_ufs_source():
     if armcpu_path.is_file():
         acpu2 = armcpu_path.read_text()
         if 'ARMCPU_SECONDARY_OK' not in acpu2:
-            acpu2 = acpu2.replace(
+            # the panic-conversion pass above may already have rewritten this line
+            for form in (
                 '    if (!boot) { panic ("ArmCpu: secondary resume is unsupported"); }\n',
-                '    // ARMCPU_SECONDARY_OK: allow the secondary body to run on cpu_init(false).\n'
-                '    IOLog ("ARMCPU_PATCH_REV_20261030_A secondary init allowed id=%u boot=%u",\n'
-                '           logicalId, boot ? 1 : 0);\n', 1)
+                '    if (!boot) { IOLog ("ArmCpu: secondary resume is unsupported"); }\n',
+            ):
+                if form in acpu2:
+                    acpu2 = acpu2.replace(
+                        form,
+                        '    // ARMCPU_SECONDARY_OK: the body below is the secondary bring-up.\n'
+                        '    IOLog ("ARMCPU_PATCH_REV_20261030_A secondary init id=%u boot=%u",\n'
+                        '           logicalId, boot ? 1 : 0);\n', 1)
+                    break
             armcpu_path.write_text(acpu2)
             if 'ARMCPU_SECONDARY_OK' in acpu2:
                 print('ArmCpu: secondary init allowed on cpu_init(false)')
+            else:
+                print('ArmCpu: secondary panic line NOT found')
 
     # GUARD: a re-read once silently discarded every patch above, so verify the final
     # source actually carries each marker before writing it.
